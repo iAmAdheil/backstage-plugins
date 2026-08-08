@@ -2,6 +2,7 @@ import { DataKey } from 'recharts/types/util/types';
 import {
   CpuUsageMetrics,
   MemoryUsageMetrics,
+  MetricsTimeSeriesItem,
   NetworkLatencyMetrics,
   NetworkThroughputMetrics,
 } from '../../types';
@@ -101,7 +102,7 @@ const niceCeil = (x: number): number => {
  * positive values, so the caller can fall back to Recharts defaults.
  */
 export const calculateMemoryYAxis = (
-  usageData: MemoryUsageMetrics,
+  usageData: MemoryUsageMetrics | Record<string, MetricsTimeSeriesItem[]>,
 ): { ticks: number[]; domain: [number, number] } | undefined => {
   let max = 0;
   Object.values(usageData).forEach(series => {
@@ -264,7 +265,10 @@ export const transformMetricsData = (
     | CpuUsageMetrics
     | MemoryUsageMetrics
     | NetworkThroughputMetrics
-    | NetworkLatencyMetrics,
+    | NetworkLatencyMetrics
+    // Project-level charts key the series by component name rather than by
+    // metric name, but the merge-by-timestamp logic is identical.
+    | Record<string, MetricsTimeSeriesItem[]>,
 ) => {
   const gapped = injectPerMetricGaps(usageData as Record<string, RawPoint[]>);
   const timeMap = new Map<string, MetricDataPoint>();
@@ -379,6 +383,78 @@ export const getLineOpacity = (
 ): number => {
   return !hoveringDataKey || hoveringDataKey === metricKey ? 1 : 0.5;
 };
+
+/**
+ * Distinct line colours for project-level charts, where each line is a
+ * component rather than a fixed metric. Deliberately bounded — beyond this many
+ * components the palette cycles instead of generating unreadable near-duplicate
+ * hues; the legend (scrollable) remains the source of truth for identity.
+ */
+const COMPONENT_LINE_COLORS = [
+  '#8884d8',
+  '#82ca9d',
+  '#ffc658',
+  '#ff7300',
+  '#0088fe',
+  '#ff7f7f',
+  '#00c49f',
+  '#a4506c',
+  '#d0a3ff',
+  '#4d7c0f',
+  '#e91e63',
+  '#00acc1',
+];
+
+/** Stable colour for the component at `index` in the chart's series order. */
+export const getComponentLineColor = (index: number): string =>
+  COMPONENT_LINE_COLORS[index % COMPONENT_LINE_COLORS.length];
+
+/**
+ * Pick a Prometheus `step` for the selected window so the chart gets roughly
+ * 120-720 points regardless of range. Shared by the component-level and
+ * project-level metrics hooks.
+ */
+export const calculateStep = (
+  timeRange: string,
+  startTime?: string,
+  endTime?: string,
+): string => {
+  switch (timeRange) {
+    case '10m':
+      return '15s';
+    case '30m':
+      return '30s';
+    case '1h':
+      return '1m';
+    case '24h':
+      return '5m';
+    case '7d':
+      return '30m';
+    case '14d':
+      return '1h';
+    case '30d':
+      return '2h';
+    case 'custom':
+      return stepForCustomRange(startTime, endTime);
+    default:
+      return '1m';
+  }
+};
+
+/** Pick a step that yields ~120-720 data points for the chosen window. */
+function stepForCustomRange(startTime?: string, endTime?: string): string {
+  if (!startTime || !endTime) return '1m';
+  const durationMs =
+    new Date(endTime).getTime() - new Date(startTime).getTime();
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return '1m';
+  const minutes = durationMs / (60 * 1000);
+  if (minutes <= 30) return '15s';
+  if (minutes <= 120) return '30s';
+  if (minutes <= 24 * 60) return '5m';
+  if (minutes <= 7 * 24 * 60) return '30m';
+  if (minutes <= 14 * 24 * 60) return '1h';
+  return '2h';
+}
 
 /**
  * Format metric key to display name (e.g., 'cpuUsage' -> 'CPU Usage')

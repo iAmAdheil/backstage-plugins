@@ -138,6 +138,7 @@ import {
   ObservabilityRuntimeLogs,
   ObservabilityRuntimeEvents,
   ObservabilityProjectRuntimeLogs,
+  ObservabilityProjectMetrics,
   ObservabilityAlerts,
   ObservabilityWirelogs,
   ObservabilityProjectIncidents,
@@ -770,6 +771,11 @@ const systemPage = (
         <ObservabilityProjectRuntimeLogs
           renderRowAction={renderInvestigateLogAction}
         />
+      </FeatureGatedContent>
+    </EntityLayout.Route>
+    <EntityLayout.Route path="/metrics" title="Metrics">
+      <FeatureGatedContent feature="observability">
+        <ObservabilityProjectMetrics />
       </FeatureGatedContent>
     </EntityLayout.Route>
     <EntityLayout.Route path="/traces" title="Traces">

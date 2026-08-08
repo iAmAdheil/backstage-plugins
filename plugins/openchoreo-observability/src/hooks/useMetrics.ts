@@ -7,6 +7,7 @@ import {
   calculateTimeRange,
   useOpenChoreoQuery,
 } from '@openchoreo/backstage-plugin-react';
+import { calculateStep } from '../components/Metrics/utils';
 
 export function useMetrics(
   filters: Filters,
@@ -78,46 +79,4 @@ export function useMetrics(
     fetchMetrics: (_reset: boolean = false) => refetch(),
     refresh: refetch,
   };
-}
-
-function calculateStep(
-  timeRange: string,
-  startTime?: string,
-  endTime?: string,
-): string {
-  switch (timeRange) {
-    case '10m':
-      return '15s';
-    case '30m':
-      return '30s';
-    case '1h':
-      return '1m';
-    case '24h':
-      return '5m';
-    case '7d':
-      return '30m';
-    case '14d':
-      return '1h';
-    case '30d':
-      return '2h';
-    case 'custom':
-      return stepForCustomRange(startTime, endTime);
-    default:
-      return '1m';
-  }
-}
-
-/** Pick a step that yields ~120-720 data points for the chosen window. */
-function stepForCustomRange(startTime?: string, endTime?: string): string {
-  if (!startTime || !endTime) return '1m';
-  const durationMs =
-    new Date(endTime).getTime() - new Date(startTime).getTime();
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return '1m';
-  const minutes = durationMs / (60 * 1000);
-  if (minutes <= 30) return '15s';
-  if (minutes <= 120) return '30s';
-  if (minutes <= 24 * 60) return '5m';
-  if (minutes <= 7 * 24 * 60) return '30m';
-  if (minutes <= 14 * 24 * 60) return '1h';
-  return '2h';
 }
