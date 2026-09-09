@@ -27,6 +27,9 @@ import { ChartTooltip } from './ChartTooltip';
 interface ProjectMetricGraphProps {
   /** componentName -> that component's series, from `buildProjectSeries`. */
   seriesByComponent: SeriesByComponent;
+  /** Plot only this series of each component, e.g. `cpuUsage`, one line per
+   *  component. Omit to overlay every metric of `usageType` per component. */
+  metricKey?: string;
   /** Line colour for a component. The caller owns what colour means. */
   colorOf: (component: string) => string;
   usageType: 'cpu' | 'memory' | 'networkThroughput' | 'networkLatency';
@@ -36,14 +39,17 @@ interface ProjectMetricGraphProps {
 }
 
 /**
- * Mode 2 chart: the same metrics `MetricGraphByComponent` plots — usage,
- * requests, limits — for each selected component on shared axes.
+ * Mode 2 chart: the metrics `MetricGraphByComponent` plots, for each selected
+ * component on shared axes.
  *
- * Colour carries the component, and every line is solid. Within one colour the
- * metrics are told apart by the tooltip, which names each row, and by shape:
- * requests and limits are flat, usage is not. The legend lists components only
- * — one entry each, not one per line — and hovering an entry lights that
- * component's lines.
+ * With `metricKey` set, one line per component for that metric. The resource
+ * cards use this so a project with many components does not stack 3N lines
+ * on one card. Without it, every metric of `usageType` per component, as the
+ * HTTP cards still do. Colour carries the component, and every line is solid.
+ * Within one colour the metrics are told apart by the tooltip, which names
+ * each row, and by shape: requests and limits are flat, usage is not. The
+ * legend lists components only — one entry each, not one per line — and
+ * hovering an entry lights that component's lines.
  *
  * Input stays grouped by component. The unique `dataKey` Recharts needs per
  * line is generated here and never leaves this file, so no component name has
@@ -54,6 +60,7 @@ interface ProjectMetricGraphProps {
  */
 export const ProjectMetricGraph = ({
   seriesByComponent,
+  metricKey,
   colorOf,
   usageType,
   timeRange,
@@ -68,27 +75,33 @@ export const ProjectMetricGraph = ({
   // One entry per plotted line. Components are sorted so colour and legend
   // order stay stable, and each component's metrics follow the component
   // chart's order so the two tabs stack their lines the same way. A component
-  // whose every series is empty contributes nothing — keeping it would put an
-  // entry in the legend with nothing to hover.
+  // whose every plotted series is empty contributes nothing — keeping it would
+  // put an entry in the legend with nothing to hover.
   const lines = useMemo(() => {
-    const metricKeys = Object.values(getMetricConfigs(usageType)).map(
-      config => config.key,
-    );
+    const metricKeys = metricKey
+      ? [metricKey]
+      : Object.values(getMetricConfigs(usageType)).map(config => config.key);
+    const plottedEntries = (component: string) =>
+      Object.entries(seriesByComponent[component])
+        .filter(([key]) => metricKeys.includes(key))
+        .sort(([a], [b]) => metricKeys.indexOf(a) - metricKeys.indexOf(b));
 
     return Object.keys(seriesByComponent)
       .filter(component =>
-        Object.values(seriesByComponent[component]).some(
-          points => (points?.length ?? 0) > 0,
+        plottedEntries(component).some(
+          ([, points]) => (points?.length ?? 0) > 0,
         ),
       )
       .sort()
       .flatMap(component =>
-        Object.entries(seriesByComponent[component])
-          .sort(([a], [b]) => metricKeys.indexOf(a) - metricKeys.indexOf(b))
-          .map(([metricKey, points]) => ({ component, metricKey, points })),
+        plottedEntries(component).map(([key, points]) => ({
+          component,
+          metricKey: key,
+          points,
+        })),
       )
       .map((line, index) => ({ dataKey: `s${index}`, ...line }));
-  }, [seriesByComponent, usageType]);
+  }, [seriesByComponent, usageType, metricKey]);
 
   // Recharts hands the legend a `dataKey`; this is how the component behind one
   // is recovered, so the key itself never has to carry the name.
@@ -164,10 +177,10 @@ export const ProjectMetricGraph = ({
         />
         {/* One entry per component, not per line. Recharts 3 builds the legend
             from the rendered <Line>s and dropped the `payload` override, so the
-            3N entries are collapsed with `payloadUniqBy` and relabelled from
-            the line name ("api · CPU Usage") down to the component ("api").
-            Bounded height + scroll so a project with many components can't push
-            the chart out of its card. */}
+            entries are collapsed with `payloadUniqBy` and relabelled from the
+            line name ("api · CPU Usage") down to the component ("api").
+            Bounded height + scroll so a project with many components can't
+            push the chart out of its card. */}
         <Legend
           payloadUniqBy={entry => componentOf(entry.dataKey)}
           formatter={(_value, entry) => componentOf(entry.dataKey)}
@@ -180,7 +193,11 @@ export const ProjectMetricGraph = ({
             key={line.dataKey}
             type="monotone"
             dataKey={line.dataKey}
-            name={`${line.component} · ${formatMetricName(line.metricKey)}`}
+            name={
+              metricKey
+                ? line.component
+                : `${line.component} · ${formatMetricName(line.metricKey)}`
+            }
             stroke={colorOf(line.component)}
             strokeOpacity={getLineOpacity(line.component, hoveredComponent)}
             dot={false}

@@ -29,7 +29,11 @@ import { MetricGraphByComponent } from './MetricGraphByComponent';
 import { HTTPMetricsSection } from './HTTPMetricsSection';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
 import { ProjectHTTPMetricsSection } from './ProjectHTTPMetricsSection';
-import { buildProjectSeries } from './utils';
+import {
+  buildProjectSeries,
+  formatMetricName,
+  getMetricConfigs,
+} from './utils';
 import { componentColorResolver } from './colors';
 import {
   useGetComponentsByProject,
@@ -61,8 +65,9 @@ const hasAnyPoints = (metrics?: ResourceMetrics | null): boolean =>
  *   the component page's exact schema, so it renders through the component
  *   page's own chart and HTTP section. The tab is meant to be
  *   indistinguishable from the component tab apart from the numbers.
- * - **Components selected.** A fan-out, one request per component, charted as
- *   the same usage/requests/limits lines per component, one colour each. The
+ * - **Components selected.** A fan-out, one request per component. Usage,
+ *   requests, and limits each get their own chart, one line per component,
+ *   one colour each, so many components do not pile 3N lines on one card. The
  *   aggregate response carries no component dimension, so the breakdown can
  *   only come from separate requests.
  *
@@ -160,6 +165,25 @@ const ObservabilityProjectMetricsContent = () => {
     () => buildProjectSeries<ResourceMetrics>(byComponent, m => m.memoryUsage),
     [byComponent],
   );
+  // One card per metric: CPU usage/requests/limits, then the same for memory.
+  // Order follows the component chart's line order so both tabs read alike.
+  const breakdownCharts = useMemo(
+    () =>
+      (
+        [
+          ['cpu', cpuSeries],
+          ['memory', memorySeries],
+        ] as const
+      ).flatMap(([usageType, series]) =>
+        Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
+          usageType,
+          metricKey: key,
+          series,
+        })),
+      ),
+    [cpuSeries, memorySeries],
+  );
+
   const theme = useTheme();
   const dark = theme.palette.type === 'dark';
 
@@ -285,63 +309,65 @@ const ObservabilityProjectMetricsContent = () => {
         <>
           <MetricsActions onRefresh={handleRefresh} disabled={metricsLoading} />
           <Grid container spacing={4} className={classes.metricsGridContainer}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardHeader title="CPU Usage" />
-                <Divider />
-                <CardContent>
-                  {isBreakdown ? (
-                    <ProjectMetricGraph
-                      seriesByComponent={cpuSeries}
-                      colorOf={colorOf}
-                      usageType="cpu"
-                      timeRange={filters.timeRange}
-                      customStartTime={filters.customStartTime}
-                      customEndTime={filters.customEndTime}
-                    />
-                  ) : (
-                    <MetricGraphByComponent
-                      usageData={
-                        aggregateMetrics?.cpuUsage || ({} as CpuUsageMetrics)
-                      }
-                      usageType="cpu"
-                      timeRange={filters.timeRange}
-                      customStartTime={filters.customStartTime}
-                      customEndTime={filters.customEndTime}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardHeader title="Memory Usage" />
-                <Divider />
-                <CardContent>
-                  {isBreakdown ? (
-                    <ProjectMetricGraph
-                      seriesByComponent={memorySeries}
-                      colorOf={colorOf}
-                      usageType="memory"
-                      timeRange={filters.timeRange}
-                      customStartTime={filters.customStartTime}
-                      customEndTime={filters.customEndTime}
-                    />
-                  ) : (
-                    <MetricGraphByComponent
-                      usageData={
-                        aggregateMetrics?.memoryUsage ||
-                        ({} as MemoryUsageMetrics)
-                      }
-                      usageType="memory"
-                      timeRange={filters.timeRange}
-                      customStartTime={filters.customStartTime}
-                      customEndTime={filters.customEndTime}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
+            {isBreakdown ? (
+              breakdownCharts.map(({ usageType, metricKey, series }) => (
+                <Grid item xs={12} md={4} key={metricKey}>
+                  <Card>
+                    <CardHeader title={formatMetricName(metricKey)} />
+                    <Divider />
+                    <CardContent>
+                      <ProjectMetricGraph
+                        seriesByComponent={series}
+                        metricKey={metricKey}
+                        colorOf={colorOf}
+                        usageType={usageType}
+                        timeRange={filters.timeRange}
+                        customStartTime={filters.customStartTime}
+                        customEndTime={filters.customEndTime}
+                      />
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))
+            ) : (
+              <>
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardHeader title="CPU Usage" />
+                    <Divider />
+                    <CardContent>
+                      <MetricGraphByComponent
+                        usageData={
+                          aggregateMetrics?.cpuUsage || ({} as CpuUsageMetrics)
+                        }
+                        usageType="cpu"
+                        timeRange={filters.timeRange}
+                        customStartTime={filters.customStartTime}
+                        customEndTime={filters.customEndTime}
+                      />
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardHeader title="Memory Usage" />
+                    <Divider />
+                    <CardContent>
+                      <MetricGraphByComponent
+                        usageData={
+                          aggregateMetrics?.memoryUsage ||
+                          ({} as MemoryUsageMetrics)
+                        }
+                        usageType="memory"
+                        timeRange={filters.timeRange}
+                        customStartTime={filters.customStartTime}
+                        customEndTime={filters.customEndTime}
+                      />
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </>
+            )}
             {isBreakdown ? (
               <ProjectHTTPMetricsSection
                 filters={filters}

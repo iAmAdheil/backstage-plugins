@@ -48,15 +48,18 @@ jest.mock('./MetricGraphByComponent', () => ({
   ),
 }));
 
+// One mode-2 chart per metric, so the test id carries the metric key.
 jest.mock('./ProjectMetricGraph', () => ({
-  ProjectMetricGraph: ({ usageType, seriesByComponent, colorOf }: any) => (
+  ProjectMetricGraph: ({
+    usageType,
+    metricKey,
+    seriesByComponent,
+    colorOf,
+  }: any) => (
     <div
-      data-testid={`project-graph-${usageType}`}
+      data-testid={`project-graph-${metricKey}`}
+      data-usage-type={usageType}
       data-components={Object.keys(seriesByComponent).sort().join(',')}
-      data-series-count={Object.values(seriesByComponent).reduce(
-        (total: number, series: any) => total + Object.keys(series).length,
-        0,
-      )}
       data-has-color-resolver={typeof colorOf === 'function'}
     />
   ),
@@ -227,7 +230,9 @@ describe('ObservabilityProjectMetricsPage', () => {
 
       expect(screen.getByTestId('graph-cpu')).toBeInTheDocument();
       expect(screen.getByTestId('graph-memory')).toBeInTheDocument();
-      expect(screen.queryByTestId('project-graph-cpu')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('project-graph-cpuUsage'),
+      ).not.toBeInTheDocument();
     });
 
     it('renders the component page HTTP section, scoped to no component', async () => {
@@ -312,24 +317,47 @@ describe('ObservabilityProjectMetricsPage', () => {
       expect(enabledArgOf(mockUseMetrics)).toBe(false);
     });
 
-    it('renders the per-component charts and HTTP section', async () => {
+    it('renders one chart per metric, each over the selection', async () => {
       await renderPage();
 
-      expect(screen.getByTestId('project-graph-cpu')).toHaveAttribute(
-        'data-components',
-        'api,worker',
+      const metricKeys = [
+        'cpuUsage',
+        'cpuRequests',
+        'cpuLimits',
+        'memoryUsage',
+        'memoryRequests',
+        'memoryLimits',
+      ];
+      metricKeys.forEach(key => {
+        expect(screen.getByTestId(`project-graph-${key}`)).toHaveAttribute(
+          'data-components',
+          'api,worker',
+        );
+      });
+      expect(screen.getByTestId('project-graph-memoryUsage')).toHaveAttribute(
+        'data-usage-type',
+        'memory',
       );
-      // usage + requests + limits for each of the two components
-      expect(screen.getByTestId('project-graph-cpu')).toHaveAttribute(
-        'data-series-count',
-        '6',
-      );
-      expect(screen.getByTestId('project-graph-memory')).toBeInTheDocument();
       expect(screen.getByTestId('project-http-section')).toHaveAttribute(
         'data-components',
         'api,worker',
       );
       expect(screen.queryByTestId('graph-cpu')).not.toBeInTheDocument();
+    });
+
+    it('titles the six cards by metric', async () => {
+      await renderPage();
+
+      [
+        'CPU Usage',
+        'CPU Requests',
+        'CPU Limits',
+        'Memory Usage',
+        'Memory Requests',
+        'Memory Limits',
+      ].forEach(title => {
+        expect(screen.getByText(title)).toBeInTheDocument();
+      });
     });
 
     it('renders the surviving charts and names the failures (E9)', async () => {
@@ -346,7 +374,7 @@ describe('ObservabilityProjectMetricsPage', () => {
 
       await renderPage();
 
-      expect(screen.getByTestId('project-graph-cpu')).toHaveAttribute(
+      expect(screen.getByTestId('project-graph-cpuUsage')).toHaveAttribute(
         'data-components',
         'api',
       );
