@@ -25,6 +25,9 @@ interface MetricsFiltersProps {
    *  to pick between and the selector is hidden. */
   components?: Component[];
   componentsLoading?: boolean;
+  /** Greys out the component selector on its own, e.g. while the breakdown
+   *  toggle is off. The selector stays visible so the control is discoverable. */
+  componentsDisabled?: boolean;
   disabled?: boolean;
 }
 
@@ -35,6 +38,7 @@ export const MetricsFilters = ({
   environmentsLoading = false,
   components = [],
   componentsLoading = false,
+  componentsDisabled = false,
   disabled = false,
 }: MetricsFiltersProps) => {
   const handleComponentChange = (event: ChangeEvent<{ value: unknown }>) => {
@@ -47,7 +51,7 @@ export const MetricsFilters = ({
         {components.length > 0 && (
           <FormControl
             fullWidth
-            disabled={disabled || componentsLoading}
+            disabled={disabled || componentsLoading || componentsDisabled}
             variant="outlined"
           >
             <InputLabel id="metrics-components-label">Components</InputLabel>

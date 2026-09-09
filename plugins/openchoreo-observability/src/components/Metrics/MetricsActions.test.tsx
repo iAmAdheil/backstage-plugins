@@ -35,3 +35,54 @@ describe('MetricsActions', () => {
     expect(screen.getByRole('button', { name: /refresh/i })).toBeDisabled();
   });
 });
+
+describe('breakdown switch', () => {
+  const label = /enable component level breakdown/i;
+
+  it('is absent on the component page, which passes no handler', () => {
+    render(<MetricsActions disabled={false} onRefresh={jest.fn()} />);
+
+    expect(screen.queryByRole('checkbox', { name: label })).toBeNull();
+  });
+
+  it('renders off by default when a handler is given', () => {
+    render(
+      <MetricsActions
+        disabled={false}
+        onRefresh={jest.fn()}
+        onBreakdownChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
+  });
+
+  it('reflects the enabled state', () => {
+    render(
+      <MetricsActions
+        disabled={false}
+        onRefresh={jest.fn()}
+        breakdownEnabled
+        onBreakdownChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('checkbox', { name: label })).toBeChecked();
+  });
+
+  it('reports the new state when clicked', async () => {
+    const user = userEvent.setup();
+    const onBreakdownChange = jest.fn();
+    render(
+      <MetricsActions
+        disabled={false}
+        onRefresh={jest.fn()}
+        onBreakdownChange={onBreakdownChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: label }));
+
+    expect(onBreakdownChange).toHaveBeenCalledWith(true);
+  });
+});
