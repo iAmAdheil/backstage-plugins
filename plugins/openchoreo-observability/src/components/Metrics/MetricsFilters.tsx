@@ -63,7 +63,14 @@ export const MetricsFilters = ({
                 renderValue={selected => {
                   const selectedArray = selected as string[];
                   if (selectedArray.length === 0) return 'All';
-                  return selectedArray.join(', ');
+                  // Same label as the checkbox row, so the closed select and
+                  // the open list name a component the same way.
+                  return selectedArray
+                    .map(name => {
+                      const match = components.find(c => c.name === name);
+                      return match?.displayName || name;
+                    })
+                    .join(', ');
                 }}
               >
                 {components.map(component => (
