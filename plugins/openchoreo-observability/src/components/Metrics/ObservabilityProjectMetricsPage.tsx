@@ -96,6 +96,13 @@ const ObservabilityProjectMetricsContent = () => {
 
   const { filters, updateFilters } = useUrlFilters({ environments });
 
+  // Off by default. A deep link that already names components opens with the
+  // breakdown on, so the URL and the switch agree on first paint. Not written
+  // to the URL: the `components` param is the only state a link needs.
+  const [breakdownEnabled, setBreakdownEnabled] = useState(
+    () => (filters.components ?? []).length > 0,
+  );
+
   // Per-environment permission (ABAC `resource.environment`) — gates the
   // content and the fetch once an env is selected. See openchoreo#3408.
   const {
@@ -205,6 +212,15 @@ const ObservabilityProjectMetricsContent = () => {
     setRefreshNonce(prev => prev + 1);
   };
 
+  // Switching off returns to the aggregate: the selection is cleared rather
+  // than kept hidden, so the charts and the URL match the switch.
+  const handleBreakdownChange = (enabled: boolean) => {
+    setBreakdownEnabled(enabled);
+    if (!enabled) {
+      updateFilters({ components: [] });
+    }
+  };
+
   const renderError = (error: string) => {
     const isObservabilityDisabled = error.includes(
       'Observability is not enabled',
@@ -269,6 +285,7 @@ const ObservabilityProjectMetricsContent = () => {
         environmentsLoading={environmentsLoading}
         components={components}
         componentsLoading={componentsLoading}
+        componentsDisabled={!breakdownEnabled}
         disabled={metricsLoading}
       />
 
@@ -307,7 +324,12 @@ const ObservabilityProjectMetricsContent = () => {
 
       {canViewMetricsForEnv && (
         <>
-          <MetricsActions onRefresh={handleRefresh} disabled={metricsLoading} />
+          <MetricsActions
+            onRefresh={handleRefresh}
+            disabled={metricsLoading}
+            breakdownEnabled={breakdownEnabled}
+            onBreakdownChange={handleBreakdownChange}
+          />
           <Grid container spacing={4} className={classes.metricsGridContainer}>
             {isBreakdown ? (
               breakdownCharts.map(({ usageType, metricKey, series }) => (

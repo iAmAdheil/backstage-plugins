@@ -90,6 +90,25 @@ describe('component selector', () => {
     expect(screen.getAllByText('Components').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('stays visible but greyed out when componentsDisabled is set', () => {
+    renderFilters({ components, componentsDisabled: true });
+
+    expect(screen.getAllByText('Components').length).toBeGreaterThanOrEqual(1);
+    const select = document
+      .querySelector('#metrics-components-label')
+      ?.closest('.MuiFormControl-root');
+    expect(select?.querySelector('.Mui-disabled')).not.toBeNull();
+  });
+
+  it('leaves the other filters usable when only the selector is disabled', () => {
+    renderFilters({ components, componentsDisabled: true });
+
+    const disabledSelects = document.querySelectorAll(
+      '.MuiInputBase-root.Mui-disabled',
+    );
+    expect(disabledSelects).toHaveLength(1);
+  });
+
   // Matches RuntimeLogs/LogsFilter: no `displayEmpty`, so MUI skips
   // `renderValue` for an empty array and the "All" placeholder does not render.
   // Deliberately consistent with the Logs tab rather than individually correct.

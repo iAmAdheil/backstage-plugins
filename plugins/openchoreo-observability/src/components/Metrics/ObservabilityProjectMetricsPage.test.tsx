@@ -34,8 +34,11 @@ jest.mock('../../hooks', () => ({
 }));
 
 jest.mock('./MetricsFilters', () => ({
-  MetricsFilters: ({ components }: any) => (
-    <div data-testid="metrics-filters">
+  MetricsFilters: ({ components, componentsDisabled }: any) => (
+    <div
+      data-testid="metrics-filters"
+      data-components-disabled={String(componentsDisabled)}
+    >
       <span data-testid="component-count">{components.length}</span>
     </div>
   ),
@@ -86,10 +89,19 @@ jest.mock('./ProjectHTTPMetricsSection', () => ({
 }));
 
 jest.mock('./MetricsActions', () => ({
-  MetricsActions: ({ onRefresh }: any) => (
-    <button data-testid="refresh-btn" onClick={onRefresh}>
-      Refresh
-    </button>
+  MetricsActions: ({ onRefresh, breakdownEnabled, onBreakdownChange }: any) => (
+    <>
+      <button data-testid="refresh-btn" onClick={onRefresh}>
+        Refresh
+      </button>
+      <button
+        data-testid="breakdown-toggle"
+        data-enabled={String(breakdownEnabled)}
+        onClick={() => onBreakdownChange(!breakdownEnabled)}
+      >
+        Toggle breakdown
+      </button>
+    </>
   ),
 }));
 
@@ -142,14 +154,16 @@ function renderPage() {
 
 /** Selection drives the mode, so tests set it through the URL filters. */
 function selectComponents(components: string[]) {
+  const updateFilters = jest.fn();
   mockUseUrlFilters.mockReturnValue({
     filters: {
       environment: defaultEnvironment,
       timeRange: '1h',
       components,
     },
-    updateFilters: jest.fn(),
+    updateFilters,
   });
+  return updateFilters;
 }
 
 function setupDefaultMocks() {
@@ -582,6 +596,64 @@ describe('ObservabilityProjectMetricsPage', () => {
     await renderPage();
 
     expect(screen.getByTestId('component-count')).toHaveTextContent('2');
+  });
+
+  describe('component breakdown switch', () => {
+    it('starts off and greys out the component selector', async () => {
+      await renderPage();
+
+      expect(screen.getByTestId('breakdown-toggle')).toHaveAttribute(
+        'data-enabled',
+        'false',
+      );
+      expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
+        'data-components-disabled',
+        'true',
+      );
+    });
+
+    it('starts on for a deep link that names components', async () => {
+      selectComponents(['api']);
+
+      await renderPage();
+
+      expect(screen.getByTestId('breakdown-toggle')).toHaveAttribute(
+        'data-enabled',
+        'true',
+      );
+      expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
+        'data-components-disabled',
+        'false',
+      );
+    });
+
+    it('enables the selector without changing the URL when switched on', async () => {
+      const updateFilters = selectComponents([]);
+
+      await renderPage();
+      await userEvent.click(screen.getByTestId('breakdown-toggle'));
+
+      expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
+        'data-components-disabled',
+        'false',
+      );
+      expect(updateFilters).not.toHaveBeenCalled();
+      // Nothing selected yet, so the aggregate stays up.
+      expect(screen.getByTestId('graph-cpu')).toBeInTheDocument();
+    });
+
+    it('clears the selection when switched off', async () => {
+      const updateFilters = selectComponents(['api', 'worker']);
+
+      await renderPage();
+      await userEvent.click(screen.getByTestId('breakdown-toggle'));
+
+      expect(updateFilters).toHaveBeenCalledWith({ components: [] });
+      expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
+        'data-components-disabled',
+        'true',
+      );
+    });
   });
 
   it('refreshes the active mode when the refresh button is clicked', async () => {
