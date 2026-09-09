@@ -99,12 +99,21 @@ describe('component selector', () => {
     expect(screen.queryByText('All')).not.toBeInTheDocument();
   });
 
-  it('lists the selected component names', () => {
+  it('lists the selected components by display name, as the rows do', () => {
     renderFilters({
       components,
       filters: { ...baseFilters, components: ['api', 'worker'] },
     });
 
-    expect(screen.getByText('api, worker')).toBeInTheDocument();
+    expect(screen.getByText('API, Worker')).toBeInTheDocument();
+  });
+
+  it('falls back to the name for a component with no display name', () => {
+    renderFilters({
+      components: [...components, { uid: '3', name: 'db' }] as any,
+      filters: { ...baseFilters, components: ['api', 'db'] },
+    });
+
+    expect(screen.getByText('API, db')).toBeInTheDocument();
   });
 });
