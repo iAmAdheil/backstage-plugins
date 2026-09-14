@@ -1,10 +1,13 @@
+import MonetizationOnIcon from '@material-ui/icons/MonetizationOn';
 import {
   ApiBlueprint,
   createExtensionInput,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
+  PageBlueprint,
   PluginWrapperBlueprint,
+  SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
   EntityCardBlueprint,
@@ -19,7 +22,7 @@ import {
   isOpenChoreoManagedOfKind,
 } from '@openchoreo/backstage-plugin-common';
 
-import { rootRouteRef } from './routes';
+import { platformLogsRouteRef, rootRouteRef } from './routes';
 import {
   observabilityApiRef,
   ObservabilityClient,
@@ -298,6 +301,22 @@ const rcaReportsEntityContent = EntityContentBlueprint.make({
   },
 });
 
+const projectCostAnalysisEntityContent = EntityContentBlueprint.make({
+  name: 'project-cost-analysis',
+  params: {
+    path: '/cost-analysis',
+    title: 'Cost Analysis',
+    group: 'analysis',
+    filter: isOpenChoreoManagedOfKind('system'),
+    loader: () =>
+      import('./components/CostAnalysis/CostAnalysisPage').then(m => (
+        <FeatureGatedContent feature="observability">
+          <m.CostAnalysisPage />
+        </FeatureGatedContent>
+      )),
+  },
+});
+
 /**
  * Cost Insights summary card, shown on the Component and Project (System)
  * overview pages. Filtered to entities carrying the openchoreo namespace
@@ -323,15 +342,52 @@ const costInsightsSummaryCard = EntityCardBlueprint.make({
   },
 });
 
+// Ships title + icon so adopters auto-get a sidebar entry via DefaultNavContent.
+const costInsightsPage = PageBlueprint.make({
+  name: 'cost-insights',
+  params: {
+    path: '/cost-insights',
+    routeRef: rootRouteRef,
+    title: 'Cost Insights',
+    icon: <MonetizationOnIcon />,
+    // Page renders its own <Page><Header>; suppress outer PageLayout header.
+    noHeader: true,
+    loader: () =>
+      import('./components/CostInsights/CostInsightsPage').then(m => (
+        <m.CostInsightsPage />
+      )),
+  },
+});
+
 /**
- * NFS entry point for the OpenChoreo Observability plugin.
+ * Logs tab of the Platform section.
  *
- * Registers the three observability backend clients, the log-row-action
- * registry API, the component-page entity tabs (Logs, Events, Metrics,
- * Alerts, Wirelogs) and the system-page entity tabs (Logs, Traces,
- * Incidents, RCA Reports), plus the Cost Insights summary card shown on the
- * Component and Project overview pages.
+ * Attached by extension id to the page the platform-engineer-core plugin owns, so
+ * this plugin needs no dependency on that one — the coupling stays the string it
+ * already was, now an extension id rather than a URL path. If that plugin is absent
+ * the extension is simply orphaned and never renders, and no Logs tab appears.
+ *
+ * The absolute URL is unchanged: `/platform-overview` + `logs`. Sub-pages never
+ * produce a sidebar entry, so the old "omit title/icon to stay out of the nav" trick
+ * is no longer needed — and `title` is what labels the tab.
  */
+const platformLogsTab = SubPageBlueprint.make({
+  name: 'platform-logs',
+  attachTo: {
+    id: 'page:platform-engineer-core/platform-overview',
+    input: 'pages',
+  },
+  params: {
+    path: 'logs',
+    title: 'Logs',
+    routeRef: platformLogsRouteRef,
+    loader: () =>
+      import('./components/PlatformLogs/PlatformLogsTabPage').then(m => (
+        <m.PlatformLogsTabPage />
+      )),
+  },
+});
+
 export default createFrontendPlugin({
   pluginId: 'openchoreo-observability',
   routes: { root: rootRouteRef },
@@ -341,6 +397,8 @@ export default createFrontendPlugin({
     rcaAgentApi,
     finopsAgentApi,
     logRowActionRendererApi,
+    costInsightsPage,
+    platformLogsTab,
     runtimeLogsEntityContent,
     runtimeEventsEntityContent,
     metricsEntityContent,
@@ -351,6 +409,7 @@ export default createFrontendPlugin({
     tracesEntityContent,
     projectIncidentsEntityContent,
     rcaReportsEntityContent,
+    projectCostAnalysisEntityContent,
     costInsightsSummaryCard,
   ],
 });

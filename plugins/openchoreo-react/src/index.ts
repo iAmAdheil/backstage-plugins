@@ -187,6 +187,7 @@ export {
   useAutoLoadWhenEmpty,
   type UseAutoLoadWhenEmptyOptions,
 } from './hooks/useAutoLoadWhenEmpty';
+export { useQueryParams } from './hooks/useQueryParams';
 export {
   useEntityAnnotation,
   useHasAnnotation,
@@ -333,6 +334,10 @@ export {
   useLogsPermission,
   type UseLogsPermissionResult,
 } from './hooks/useLogsPermission';
+export {
+  usePlatformLogsPermission,
+  type UsePlatformLogsPermissionResult,
+} from './hooks/usePlatformLogsPermission';
 export {
   useEventsPermission,
   type UseEventsPermissionResult,
