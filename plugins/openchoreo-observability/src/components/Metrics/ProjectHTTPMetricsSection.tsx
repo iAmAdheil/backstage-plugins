@@ -11,14 +11,9 @@ import {
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
-import { Filters, HttpMetrics, ProjectHttpMetrics } from '../../types';
+import { Filters } from '../../types';
 import { useDataPlaneNetPolProvider, useProjectMetrics } from '../../hooks';
-import {
-  buildChartLines,
-  buildProjectSeries,
-  formatMetricName,
-  getMetricConfigs,
-} from './utils';
+import { formatMetricName, getMetricConfigs } from './utils';
 import { componentColorResolver } from './colors';
 
 type ProjectHTTPMetricsSectionProps = {
@@ -63,7 +58,6 @@ export const ProjectHTTPMetricsSection = ({
     'http',
     enabled && httpEnabled,
   );
-  const httpMetrics = metrics as ProjectHttpMetrics | undefined;
 
   // Filters live in the query key, so a filter change refetches on its own.
   // Only the parent's explicit refresh (a `refreshNonce` bump, same key) needs
@@ -76,44 +70,25 @@ export const ProjectHTTPMetricsSection = ({
     }
   }, [refreshNonce, httpEnabled, enabled, refresh]);
 
-  const byComponent = useMemo(
-    () => httpMetrics?.byComponent ?? {},
-    [httpMetrics],
-  );
   // The fan-out is partial-tolerant: `useProjectMetrics` only throws when every
   // component fails. A component missing from the charts is otherwise silent,
   // so name it here. The resource fan-out is a separate request and carries its
   // own failures, which the page reports.
-  const failedComponents = httpMetrics?.failedComponents ?? [];
-
-  const throughputSeries = useMemo(
-    () =>
-      buildProjectSeries<HttpMetrics>(byComponent, m => m.networkThroughput),
-    [byComponent],
-  );
-  const latencySeries = useMemo(
-    () => buildProjectSeries<HttpMetrics>(byComponent, m => m.networkLatency),
-    [byComponent],
-  );
+  const failedComponents = metrics?.failedComponents ?? [];
 
   // One card per metric, throughput first, then latency, the same as the
   // resource cards: one line per component on each.
-  const cards = useMemo(
-    () =>
-      (
-        [
-          ['networkThroughput', throughputSeries],
-          ['networkLatency', latencySeries],
-        ] as const
-      ).flatMap(([usageType, series]) =>
+  const cards = useMemo(() => {
+    const byMetric = metrics?.byMetric ?? {};
+    return (['networkThroughput', 'networkLatency'] as const).flatMap(
+      usageType =>
         Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
           usageType,
           title: formatMetricName(key),
-          lines: buildChartLines(series, key),
+          series: byMetric[key] ?? {},
         })),
-      ),
-    [throughputSeries, latencySeries],
-  );
+    );
+  }, [metrics]);
   const theme = useTheme();
   const dark = theme.palette.type === 'dark';
 
@@ -177,14 +152,14 @@ export const ProjectHTTPMetricsSection = ({
           </Alert>
         </Grid>
       )}
-      {cards.map(({ usageType, title, lines }) => (
+      {cards.map(({ usageType, title, series }) => (
         <Grid item xs={12} md={6} xl={4} key={title}>
           <Card>
             <CardHeader title={title} />
             <Divider />
             <CardContent>
               <ProjectMetricGraph
-                lines={lines}
+                series={series}
                 colorOf={colorOf}
                 usageType={usageType}
                 timeRange={filters.timeRange}

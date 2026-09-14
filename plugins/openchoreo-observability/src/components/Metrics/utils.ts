@@ -1,10 +1,8 @@
 import { DataKey } from 'recharts/types/util/types';
 import {
-  ChartLine,
   ComponentSeriesMap,
   MemoryUsageMetrics,
   MetricSeriesMap,
-  SeriesByComponent,
 } from '../../types';
 
 /**
@@ -390,45 +388,6 @@ export const getLineOpacity = (
 ): number => {
   return !hoveringDataKey || hoveringDataKey === metricKey ? 1 : 0.5;
 };
-
-/**
- * Narrow a component-keyed metrics map to the one metric group the chart plots,
- * keeping the grouping intact.
- *
- * `select` picks the group — `cpuUsage`, `memoryUsage`, `networkThroughput`,
- * `networkLatency` — each of which is already a `metricKey -> points` map, so
- * the project chart plots exactly the metric keys the component page plots.
- */
-export const buildProjectSeries = <T>(
-  byComponent: Record<string, T>,
-  select: (metrics: T) => ComponentSeriesMap | undefined,
-): SeriesByComponent =>
-  Object.fromEntries(
-    Object.entries(byComponent).map(([component, metrics]) => [
-      component,
-      select(metrics) ?? ({} as ComponentSeriesMap),
-    ]),
-  );
-
-/**
- * Cut a component-keyed series map down to the lines one metric's chart draws.
- *
- * One line per component. Components come out in name order, so colour and
- * legend order stay stable between renders. A component with no points for the
- * metric contributes nothing, so the legend never lists an empty line.
- */
-export const buildChartLines = (
-  seriesByComponent: Record<string, MetricSeriesMap>,
-  metricKey: string,
-): ChartLine[] =>
-  Object.keys(seriesByComponent)
-    .sort()
-    .map(component => ({
-      component,
-      metricKey,
-      points: seriesByComponent[component][metricKey] ?? [],
-    }))
-    .filter(line => line.points.length > 0);
 
 /**
  * Pick a Prometheus `step` for the selected window so the chart gets roughly
