@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
 import { EntityProvider } from '@backstage/plugin-catalog-react';
@@ -78,15 +78,13 @@ jest.mock('./MetricGraphByComponent', () => ({
   ),
 }));
 
-// One mode-2 chart per metric, so the test id carries the metric key.
+// One mode-2 chart per metric. Tests find a chart by its card title.
 jest.mock('./ProjectMetricGraph', () => ({
-  ProjectMetricGraph: ({ usageType, lines, colorOf }: any) => (
+  ProjectMetricGraph: ({ usageType, series, colorOf }: any) => (
     <div
-      data-testid={`project-graph-${lines[0]?.metricKey ?? 'empty'}`}
+      data-testid="project-graph"
       data-usage-type={usageType}
-      data-components={[...new Set(lines.map((line: any) => line.component))]
-        .sort()
-        .join(',')}
+      data-components={Object.keys(series).sort().join(',')}
       data-has-color-resolver={typeof colorOf === 'function'}
     />
   ),
@@ -153,23 +151,35 @@ const aggregateMetrics = {
 
 const point = [{ timestamp: '2026-03-05T10:00:00.000Z', value: 0.5 }];
 
-/** Points on every metric, so each of the six cards has a line to draw. */
-const fullResourceMetrics = {
-  cpuUsage: { cpuUsage: point, cpuRequests: point, cpuLimits: point },
-  memoryUsage: {
-    memoryUsage: point,
-    memoryRequests: point,
-    memoryLimits: point,
-  },
-};
+const RESOURCE_METRIC_KEYS = [
+  'cpuUsage',
+  'cpuRequests',
+  'cpuLimits',
+  'memoryUsage',
+  'memoryRequests',
+  'memoryLimits',
+];
+
+/** `byMetric` as the hook returns it: points on every metric for each
+ *  component, so each of the six cards has a line to draw. */
+const byMetricFor = (components: string[]) =>
+  Object.fromEntries(
+    RESOURCE_METRIC_KEYS.map(key => [
+      key,
+      Object.fromEntries(components.map(component => [component, point])),
+    ]),
+  );
 
 const breakdownMetrics = {
-  byComponent: {
-    api: fullResourceMetrics,
-    worker: fullResourceMetrics,
-  },
+  byMetric: byMetricFor(['api', 'worker']),
   failedComponents: [],
 };
+
+/** The mocked chart inside the card with this title. */
+const graphIn = (title: string) =>
+  within(
+    screen.getByText(title).closest('.MuiCard-root') as HTMLElement,
+  ).getByTestId('project-graph');
 
 function renderPage() {
   return renderInTestApp(
@@ -275,9 +285,7 @@ describe('ObservabilityProjectMetricsPage', () => {
 
       expect(screen.getByTestId('graph-cpu')).toBeInTheDocument();
       expect(screen.getByTestId('graph-memory')).toBeInTheDocument();
-      expect(
-        screen.queryByTestId('project-graph-cpuUsage'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('project-graph')).not.toBeInTheDocument();
     });
 
     it('renders the component page HTTP section, scoped to no component', async () => {
@@ -365,21 +373,17 @@ describe('ObservabilityProjectMetricsPage', () => {
     it('renders one chart per metric, each over the selection', async () => {
       await renderPage();
 
-      const metricKeys = [
-        'cpuUsage',
-        'cpuRequests',
-        'cpuLimits',
-        'memoryUsage',
-        'memoryRequests',
-        'memoryLimits',
-      ];
-      metricKeys.forEach(key => {
-        expect(screen.getByTestId(`project-graph-${key}`)).toHaveAttribute(
-          'data-components',
-          'api,worker',
-        );
+      [
+        'CPU Usage',
+        'CPU Requests',
+        'CPU Limits',
+        'Memory Usage',
+        'Memory Requests',
+        'Memory Limits',
+      ].forEach(title => {
+        expect(graphIn(title)).toHaveAttribute('data-components', 'api,worker');
       });
-      expect(screen.getByTestId('project-graph-memoryUsage')).toHaveAttribute(
+      expect(graphIn('Memory Usage')).toHaveAttribute(
         'data-usage-type',
         'memory',
       );
@@ -393,48 +397,32 @@ describe('ObservabilityProjectMetricsPage', () => {
     it('lays the six cards out as one flat list, CPU first, then memory', async () => {
       await renderPage();
 
-      const cards = Array.from(document.querySelectorAll('[data-usage-type]'));
-
       // One list in reading order, so the grid wraps c1 c2 / c3 m1 / m2 m3 at
       // two per row, and c1 c2 c3 / m1 m2 m3 at three per row.
-      expect(
-        cards.map(card =>
-          card.getAttribute('data-testid')!.replace('project-graph-', ''),
-        ),
-      ).toEqual([
-        'cpuUsage',
-        'cpuRequests',
-        'cpuLimits',
-        'memoryUsage',
-        'memoryRequests',
-        'memoryLimits',
-      ]);
-      // No nested columns: every card's grid item shares one parent grid.
-      const grids = new Set(
-        cards.map(card => card.closest('.MuiGrid-item')?.parentElement),
-      );
-      expect(grids.size).toBe(1);
-    });
-
-    it('titles the six cards by metric', async () => {
-      await renderPage();
-
-      [
+      const titles = Array.from(
+        document.querySelectorAll('.MuiCardHeader-title'),
+      ).map(node => node.textContent);
+      expect(titles).toEqual([
         'CPU Usage',
         'CPU Requests',
         'CPU Limits',
         'Memory Usage',
         'Memory Requests',
         'Memory Limits',
-      ].forEach(title => {
-        expect(screen.getByText(title)).toBeInTheDocument();
-      });
+      ]);
+      // No nested columns: every card's grid item shares one parent grid.
+      const grids = new Set(
+        screen
+          .getAllByTestId('project-graph')
+          .map(graph => graph.closest('.MuiGrid-item')?.parentElement),
+      );
+      expect(grids.size).toBe(1);
     });
 
     it('renders the surviving charts and names the failures (E9)', async () => {
       mockUseProjectMetrics.mockReturnValue({
         metrics: {
-          byComponent: { api: fullResourceMetrics },
+          byMetric: byMetricFor(['api']),
           failedComponents: [{ name: 'worker', error: 'nope' }],
         },
         loading: false,
@@ -445,10 +433,7 @@ describe('ObservabilityProjectMetricsPage', () => {
 
       await renderPage();
 
-      expect(screen.getByTestId('project-graph-cpuUsage')).toHaveAttribute(
-        'data-components',
-        'api',
-      );
+      expect(graphIn('CPU Usage')).toHaveAttribute('data-components', 'api');
       expect(screen.getByText(/No metrics for worker/)).toBeInTheDocument();
     });
 

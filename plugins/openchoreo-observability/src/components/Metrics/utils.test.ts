@@ -9,8 +9,6 @@ import {
   calculateTimeDomain,
   calculateMemoryYAxis,
   calculateStep,
-  buildChartLines,
-  buildProjectSeries,
 } from './utils';
 import { MemoryUsageMetrics } from '../../types';
 
@@ -524,103 +522,5 @@ describe('calculateStep', () => {
     expect(calculateStep('custom', later, earlier)).toBe('1m');
     expect(calculateStep('custom', earlier, earlier)).toBe('1m');
     expect(calculateStep('custom', 'nonsense', later)).toBe('1m');
-  });
-});
-
-describe('buildProjectSeries', () => {
-  const points = [{ timestamp: '2024-01-01T00:00:00.000Z', value: 1 }];
-  const resource = {
-    cpuUsage: { cpuUsage: points, cpuRequests: points, cpuLimits: points },
-  };
-
-  it('keeps the grouping, narrowed to the selected metric group', () => {
-    expect(
-      buildProjectSeries<typeof resource>(
-        { api: resource, db: resource },
-        m => m.cpuUsage,
-      ),
-    ).toEqual({
-      api: { cpuUsage: points, cpuRequests: points, cpuLimits: points },
-      db: { cpuUsage: points, cpuRequests: points, cpuLimits: points },
-    });
-  });
-
-  it('keeps a component whose group is missing, with no series', () => {
-    expect(
-      buildProjectSeries<{ cpuUsage?: typeof resource.cpuUsage }>(
-        { api: {} },
-        m => m.cpuUsage,
-      ),
-    ).toEqual({ api: {} });
-  });
-
-  it('never has to escape a component name', () => {
-    const result = buildProjectSeries<typeof resource>(
-      { 'a::b': resource },
-      m => m.cpuUsage,
-    );
-
-    expect(Object.keys(result)).toEqual(['a::b']);
-    const group = result['a::b'];
-    expect('cpuUsage' in group && group.cpuUsage).toEqual(points);
-  });
-});
-
-describe('buildChartLines', () => {
-  const point = [{ timestamp: '2026-03-05T10:00:00.000Z', value: 1 }];
-  const empty: { timestamp: string; value: number }[] = [];
-
-  const cpu = (usage: any, requests: any, limits: any) => ({
-    cpuUsage: usage,
-    cpuRequests: requests,
-    cpuLimits: limits,
-  });
-
-  it('emits one line per component for the metric', () => {
-    const lines = buildChartLines(
-      {
-        worker: cpu(point, point, point),
-        api: cpu(point, point, point),
-      } as any,
-      'cpuUsage',
-    );
-
-    // Sorted by component, so colour and legend order hold between renders.
-    expect(lines.map(line => line.component)).toEqual(['api', 'worker']);
-    expect(lines.every(line => line.metricKey === 'cpuUsage')).toBe(true);
-  });
-
-  it('plots only the metric asked for', () => {
-    const lines = buildChartLines(
-      { api: cpu(point, empty, empty) } as any,
-      'cpuRequests',
-    );
-
-    expect(lines).toEqual([]);
-  });
-
-  it('drops a component with nothing to plot', () => {
-    const lines = buildChartLines(
-      {
-        api: cpu(point, point, point),
-        silent: cpu(empty, empty, empty),
-      } as any,
-      'cpuUsage',
-    );
-
-    expect(lines.map(line => line.component)).toEqual(['api']);
-  });
-
-  it('drops a component that does not carry the metric', () => {
-    const lines = buildChartLines(
-      { api: cpu(point, point, point) } as any,
-      'memoryUsage',
-    );
-
-    expect(lines).toEqual([]);
-  });
-
-  it('returns nothing for an empty map', () => {
-    expect(buildChartLines({}, 'cpuUsage')).toEqual([]);
   });
 });

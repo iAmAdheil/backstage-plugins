@@ -9,7 +9,7 @@ import {
   Legend,
   LegendPayload,
 } from 'recharts';
-import { ChartLine, MetricSeriesMap } from '../../types';
+import { ComponentPoints, MetricSeriesMap } from '../../types';
 import {
   formatAxisTime,
   formatTooltipTime,
@@ -23,10 +23,9 @@ import { useMetricGraphStyles } from './styles';
 import { ChartTooltip } from './ChartTooltip';
 
 interface ProjectMetricGraphProps {
-  /** The exact lines to draw, from `buildChartLines`: one metric, one line per
-   *  component. The chart plots what it is given and never narrows a wider
-   *  map, so the caller alone decides what appears on this card. */
-  lines: ChartLine[];
+  /** One metric's points per component, e.g. `byMetric.cpuUsage`. One line per
+   *  entry, so the caller alone decides what appears on this card. */
+  series: ComponentPoints;
   /** Line colour for a component. The caller owns what colour means. */
   colorOf: (component: string) => string;
   /** Drives value formatting and the memory Y axis only. */
@@ -37,7 +36,7 @@ interface ProjectMetricGraphProps {
 }
 
 /**
- * The breakdown chart: one line per entry in `lines`, on shared axes.
+ * The breakdown chart: one line per component in `series`, on shared axes.
  *
  * Every card plots one metric, so each line is one component. Colour carries
  * the component, and every line is solid. The legend lists components, one
@@ -51,7 +50,7 @@ interface ProjectMetricGraphProps {
  * with `MetricGraphByComponent`, exactly as the component page does.
  */
 export const ProjectMetricGraph = ({
-  lines,
+  series,
   colorOf,
   usageType,
   timeRange,
@@ -64,9 +63,17 @@ export const ProjectMetricGraph = ({
   >();
 
   // Recharts addresses a line by `dataKey`, so each one gets an opaque index.
+  // Components are sorted so colour and legend order stay stable.
   const chartLines = useMemo(
-    () => lines.map((line, index) => ({ dataKey: `s${index}`, ...line })),
-    [lines],
+    () =>
+      Object.keys(series)
+        .sort()
+        .map((component, index) => ({
+          dataKey: `s${index}`,
+          component,
+          points: series[component],
+        })),
+    [series],
   );
 
   // Recharts hands the legend a `dataKey`; this is how the component behind one

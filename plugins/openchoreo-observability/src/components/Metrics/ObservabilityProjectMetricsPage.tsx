@@ -29,12 +29,7 @@ import { MetricGraphByComponent } from './MetricGraphByComponent';
 import { HTTPMetricsSection } from './HTTPMetricsSection';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
 import { ProjectHTTPMetricsSection } from './ProjectHTTPMetricsSection';
-import {
-  buildChartLines,
-  buildProjectSeries,
-  formatMetricName,
-  getMetricConfigs,
-} from './utils';
+import { formatMetricName, getMetricConfigs } from './utils';
 import { componentColorResolver } from './colors';
 import {
   useGetComponentsByProject,
@@ -47,7 +42,6 @@ import {
   CpuUsageMetrics,
   MemoryUsageMetrics,
   MetricsViewMode,
-  ProjectResourceMetrics,
   ResourceMetrics,
 } from '../../types';
 import { useObservabilityMetricsPageStyles } from './styles';
@@ -163,47 +157,21 @@ const ObservabilityProjectMetricsContent = () => {
   const refreshMetrics = isBreakdown ? breakdown.refresh : aggregate.refresh;
 
   const aggregateMetrics = aggregate.metrics as ResourceMetrics | null;
-  const byComponent = useMemo(
-    () =>
-      (breakdown.metrics as ProjectResourceMetrics | undefined)?.byComponent ??
-      {},
-    [breakdown.metrics],
-  );
-  const failedComponents =
-    (breakdown.metrics as ProjectResourceMetrics | undefined)
-      ?.failedComponents ?? [];
-
-  const cpuSeries = useMemo(
-    () => buildProjectSeries<ResourceMetrics>(byComponent, m => m.cpuUsage),
-    [byComponent],
-  );
-  const memorySeries = useMemo(
-    () => buildProjectSeries<ResourceMetrics>(byComponent, m => m.memoryUsage),
-    [byComponent],
-  );
+  const failedComponents = breakdown.metrics?.failedComponents ?? [];
 
   // One card per metric, CPU first, then memory, each in its config's order.
   // The cards form one flat list so the grid wraps them in reading order at
   // every breakpoint: c1 c2 / c3 m1 / m2 m3 at two per row.
-  //
-  // The cut happens here, once: a card carries the lines it draws and nothing
-  // wider, so no chart has to sift a whole-resource map on every render.
-  const breakdownCards = useMemo(
-    () =>
-      (
-        [
-          ['cpu', cpuSeries],
-          ['memory', memorySeries],
-        ] as const
-      ).flatMap(([usageType, series]) =>
-        Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
-          usageType,
-          title: formatMetricName(key),
-          lines: buildChartLines(series, key),
-        })),
-      ),
-    [cpuSeries, memorySeries],
-  );
+  const breakdownCards = useMemo(() => {
+    const byMetric = breakdown.metrics?.byMetric ?? {};
+    return (['cpu', 'memory'] as const).flatMap(usageType =>
+      Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
+        usageType,
+        title: formatMetricName(key),
+        series: byMetric[key] ?? {},
+      })),
+    );
+  }, [breakdown.metrics]);
 
   const theme = useTheme();
   const dark = theme.palette.type === 'dark';
@@ -379,14 +347,14 @@ const ObservabilityProjectMetricsContent = () => {
           <MetricsActions onRefresh={handleRefresh} disabled={metricsLoading} />
           <Grid container spacing={4} className={classes.metricsGridContainer}>
             {isBreakdown ? (
-              breakdownCards.map(({ usageType, title, lines }) => (
+              breakdownCards.map(({ usageType, title, series }) => (
                 <Grid item xs={12} md={6} xl={4} key={title}>
                   <Card>
                     <CardHeader title={title} />
                     <Divider />
                     <CardContent>
                       <ProjectMetricGraph
-                        lines={lines}
+                        series={series}
                         colorOf={colorOf}
                         usageType={usageType}
                         timeRange={filters.timeRange}
