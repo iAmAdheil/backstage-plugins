@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
 import { componentColorResolver } from './colors';
+import { buildChartLines } from './utils';
 
 let legendProps: any;
 
@@ -73,8 +74,7 @@ describe('ProjectMetricGraph', () => {
   it('renders one line per component for the requested metric', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(['api', 'db', 'worker'])}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(['api', 'db', 'worker']), 'cpuUsage')}
         colorOf={componentColorResolver(['api', 'db', 'worker'])}
         usageType="cpu"
         timeRange="1h"
@@ -88,11 +88,13 @@ describe('ProjectMetricGraph', () => {
   it('plots only the requested metric, not the other two', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={{
-          api: { cpuUsage: [], cpuRequests: points, cpuLimits: points },
-          db: { cpuUsage: points, cpuRequests: [], cpuLimits: [] },
-        }}
-        metricKey="cpuRequests"
+        lines={buildChartLines(
+          {
+            api: { cpuUsage: [], cpuRequests: points, cpuLimits: points },
+            db: { cpuUsage: points, cpuRequests: [], cpuLimits: [] },
+          },
+          'cpuRequests',
+        )}
         colorOf={componentColorResolver(['api', 'db'])}
         usageType="cpu"
         timeRange="1h"
@@ -105,8 +107,7 @@ describe('ProjectMetricGraph', () => {
   it('gives each component its own colour', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(['api', 'db'])}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(['api', 'db']), 'cpuUsage')}
         colorOf={componentColorResolver(['api', 'db'])}
         usageType="cpu"
         timeRange="1h"
@@ -120,8 +121,7 @@ describe('ProjectMetricGraph', () => {
   it('draws every line solid', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(['api', 'db'])}
-        metricKey="cpuLimits"
+        lines={buildChartLines(cpuFor(['api', 'db']), 'cpuLimits')}
         colorOf={componentColorResolver(['api', 'db'])}
         usageType="cpu"
         timeRange="1h"
@@ -136,8 +136,7 @@ describe('ProjectMetricGraph', () => {
   it('lists components in the legend, one entry each', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(['api', 'db'])}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(['api', 'db']), 'cpuUsage')}
         colorOf={componentColorResolver(['api', 'db'])}
         usageType="cpu"
         timeRange="1h"
@@ -150,8 +149,7 @@ describe('ProjectMetricGraph', () => {
   it('plots a component whose name contains the old key separator', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(['a::b'])}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(['a::b']), 'cpuUsage')}
         colorOf={componentColorResolver(['a::b'])}
         usageType="cpu"
         timeRange="1h"
@@ -164,8 +162,7 @@ describe('ProjectMetricGraph', () => {
   it('renders the empty overlay and no lines for empty input', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={{}}
-        metricKey="cpuUsage"
+        lines={buildChartLines({}, 'cpuUsage')}
         colorOf={componentColorResolver([])}
         usageType="cpu"
         timeRange="1h"
@@ -179,11 +176,13 @@ describe('ProjectMetricGraph', () => {
   it('drops a component with no points for this metric instead of throwing', () => {
     render(
       <ProjectMetricGraph
-        seriesByComponent={{
-          ...cpuFor(['api']),
-          silent: { cpuUsage: [], cpuRequests: [], cpuLimits: [] },
-        }}
-        metricKey="cpuUsage"
+        lines={buildChartLines(
+          {
+            ...cpuFor(['api']),
+            silent: { cpuUsage: [], cpuRequests: [], cpuLimits: [] },
+          },
+          'cpuUsage',
+        )}
         colorOf={componentColorResolver(['api', 'silent'])}
         usageType="cpu"
         timeRange="1h"
@@ -199,8 +198,7 @@ describe('ProjectMetricGraph', () => {
 
     const { rerender } = render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(order)}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(order), 'cpuUsage')}
         colorOf={colorOf}
         usageType="cpu"
         timeRange="1h"
@@ -212,11 +210,13 @@ describe('ProjectMetricGraph', () => {
 
     rerender(
       <ProjectMetricGraph
-        seriesByComponent={{
-          api: { cpuUsage: [], cpuRequests: [], cpuLimits: [] },
-          ...cpuFor(['db']),
-        }}
-        metricKey="cpuUsage"
+        lines={buildChartLines(
+          {
+            api: { cpuUsage: [], cpuRequests: [], cpuLimits: [] },
+            ...cpuFor(['db']),
+          },
+          'cpuUsage',
+        )}
         colorOf={colorOf}
         usageType="cpu"
         timeRange="1h"
@@ -227,49 +227,11 @@ describe('ProjectMetricGraph', () => {
     expect(lines()[0].getAttribute('data-stroke')).toBe(dbColour);
   });
 
-  describe('without a metricKey (HTTP cards)', () => {
-    it('overlays every metric per component, one colour each', () => {
-      render(
-        <ProjectMetricGraph
-          seriesByComponent={cpuFor(['api', 'db'])}
-          colorOf={componentColorResolver(['api', 'db'])}
-          usageType="cpu"
-          timeRange="1h"
-        />,
-      );
-
-      expect(lineNames()).toEqual([
-        'api · CPU Usage',
-        'api · CPU Requests',
-        'api · CPU Limits',
-        'db · CPU Usage',
-        'db · CPU Requests',
-        'db · CPU Limits',
-      ]);
-      const colours = new Set(lines().map(l => l.getAttribute('data-stroke')));
-      expect(colours.size).toBe(2);
-    });
-
-    it('still lists components in the legend, not lines', () => {
-      render(
-        <ProjectMetricGraph
-          seriesByComponent={cpuFor(['api', 'db'])}
-          colorOf={componentColorResolver(['api', 'db'])}
-          usageType="cpu"
-          timeRange="1h"
-        />,
-      );
-
-      expect(legendEntries()).toEqual(['api', 'db']);
-    });
-  });
-
   it('keeps the colour palette bounded for a large project', () => {
     const names = Array.from({ length: 24 }, (_, i) => `component-${i}`);
     render(
       <ProjectMetricGraph
-        seriesByComponent={cpuFor(names)}
-        metricKey="cpuUsage"
+        lines={buildChartLines(cpuFor(names), 'cpuUsage')}
         colorOf={componentColorResolver(names)}
         usageType="cpu"
         timeRange="1h"

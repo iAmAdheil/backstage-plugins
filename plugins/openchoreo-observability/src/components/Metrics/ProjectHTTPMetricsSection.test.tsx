@@ -14,10 +14,13 @@ jest.mock('../../hooks', () => ({
 }));
 
 jest.mock('./ProjectMetricGraph', () => ({
-  ProjectMetricGraph: ({ usageType, seriesByComponent }: any) => (
+  ProjectMetricGraph: ({ usageType, lines }: any) => (
     <div
-      data-testid={`project-graph-${usageType}`}
-      data-components={Object.keys(seriesByComponent).sort().join(',')}
+      data-testid={`project-graph-${lines[0]?.metricKey ?? 'empty'}`}
+      data-usage-type={usageType}
+      data-components={[...new Set(lines.map((line: any) => line.component))]
+        .sort()
+        .join(',')}
     />
   ),
 }));
@@ -34,12 +37,23 @@ const defaultEnvironment = {
   dataPlaneRef: { kind: 'DataPlane', name: 'default-dp' },
 };
 
+const at = (value: number) => [
+  { timestamp: '2026-03-05T10:00:00.000Z', value },
+];
+
+// The keys `getMetricConfigs` declares for each group. There is one card per
+// key, so a made-up key would simply produce no card.
 const httpMetrics = {
   networkThroughput: {
-    requestVolume: [{ timestamp: '2026-03-05T10:00:00.000Z', value: 12 }],
+    requestCount: at(12),
+    successfulRequestCount: at(11),
+    unsuccessfulRequestCount: at(1),
   },
   networkLatency: {
-    p95: [{ timestamp: '2026-03-05T10:00:00.000Z', value: 30 }],
+    meanLatency: at(30),
+    latencyP50: at(25),
+    latencyP90: at(40),
+    latencyP99: at(55),
   },
 };
 
@@ -78,10 +92,42 @@ describe('ProjectHTTPMetricsSection', () => {
   it('charts every component that returned data', async () => {
     await renderSection();
 
-    expect(
-      screen.getByTestId('project-graph-networkThroughput'),
-    ).toHaveAttribute('data-components', 'api,worker');
+    expect(screen.getByTestId('project-graph-requestCount')).toHaveAttribute(
+      'data-components',
+      'api,worker',
+    );
     expect(screen.queryByText(/No HTTP metrics for/)).not.toBeInTheDocument();
+  });
+
+  it('gives each metric its own card, throughput first, then latency', async () => {
+    await renderSection();
+
+    const cards = Array.from(document.querySelectorAll('[data-usage-type]'));
+    expect(
+      cards.map(card => [
+        card.getAttribute('data-usage-type'),
+        card.getAttribute('data-testid')!.replace('project-graph-', ''),
+      ]),
+    ).toEqual([
+      ['networkThroughput', 'requestCount'],
+      ['networkThroughput', 'successfulRequestCount'],
+      ['networkThroughput', 'unsuccessfulRequestCount'],
+      ['networkLatency', 'meanLatency'],
+      ['networkLatency', 'latencyP50'],
+      ['networkLatency', 'latencyP90'],
+      ['networkLatency', 'latencyP99'],
+    ]);
+    [
+      'Request Count',
+      'Successful Request Count',
+      'Unsuccessful Request Count',
+      'Mean Latency',
+      'Latency P50',
+      'Latency P90',
+      'Latency P99',
+    ].forEach(title => {
+      expect(screen.getByText(title)).toBeInTheDocument();
+    });
   });
 
   it('renders the surviving charts and names the failed components', async () => {
@@ -96,9 +142,10 @@ describe('ProjectHTTPMetricsSection', () => {
 
     await renderSection();
 
-    expect(
-      screen.getByTestId('project-graph-networkThroughput'),
-    ).toHaveAttribute('data-components', 'api');
+    expect(screen.getByTestId('project-graph-requestCount')).toHaveAttribute(
+      'data-components',
+      'api',
+    );
     expect(screen.getByText(/No HTTP metrics for worker/)).toBeInTheDocument();
     expect(screen.getByText(/enabled for it/)).toBeInTheDocument();
   });
@@ -146,7 +193,7 @@ describe('ProjectHTTPMetricsSection', () => {
     await renderSection();
 
     expect(
-      screen.queryByTestId('project-graph-networkThroughput'),
+      screen.queryByTestId('project-graph-requestCount'),
     ).not.toBeInTheDocument();
   });
 });

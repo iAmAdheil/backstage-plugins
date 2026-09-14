@@ -2,7 +2,10 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
 import { EntityProvider } from '@backstage/plugin-catalog-react';
-import { ObservabilityProjectMetricsPage } from './ObservabilityProjectMetricsPage';
+import {
+  AUTO_SELECTED_COMPONENT_LIMIT,
+  ObservabilityProjectMetricsPage,
+} from './ObservabilityProjectMetricsPage';
 
 // ---- Mocks (own hooks and child components only) ----
 
@@ -34,12 +37,36 @@ jest.mock('../../hooks', () => ({
 }));
 
 jest.mock('./MetricsFilters', () => ({
-  MetricsFilters: ({ components, componentsDisabled }: any) => (
+  MetricsFilters: ({
+    components,
+    viewMode,
+    onViewModeChange,
+    onFiltersChange,
+  }: any) => (
     <div
       data-testid="metrics-filters"
-      data-components-disabled={String(componentsDisabled)}
+      data-view-mode={viewMode}
+      data-has-view-control={String(Boolean(onViewModeChange))}
     >
       <span data-testid="component-count">{components.length}</span>
+      <button
+        data-testid="clear-components"
+        onClick={() => onFiltersChange({ components: [] })}
+      >
+        Clear components
+      </button>
+      <button
+        data-testid="view-total"
+        onClick={() => onViewModeChange?.('total')}
+      >
+        Project
+      </button>
+      <button
+        data-testid="view-breakdown"
+        onClick={() => onViewModeChange?.('breakdown')}
+      >
+        By component
+      </button>
     </div>
   ),
 }));
@@ -53,16 +80,13 @@ jest.mock('./MetricGraphByComponent', () => ({
 
 // One mode-2 chart per metric, so the test id carries the metric key.
 jest.mock('./ProjectMetricGraph', () => ({
-  ProjectMetricGraph: ({
-    usageType,
-    metricKey,
-    seriesByComponent,
-    colorOf,
-  }: any) => (
+  ProjectMetricGraph: ({ usageType, lines, colorOf }: any) => (
     <div
-      data-testid={`project-graph-${metricKey}`}
+      data-testid={`project-graph-${lines[0]?.metricKey ?? 'empty'}`}
       data-usage-type={usageType}
-      data-components={Object.keys(seriesByComponent).sort().join(',')}
+      data-components={[...new Set(lines.map((line: any) => line.component))]
+        .sort()
+        .join(',')}
       data-has-color-resolver={typeof colorOf === 'function'}
     />
   ),
@@ -89,19 +113,10 @@ jest.mock('./ProjectHTTPMetricsSection', () => ({
 }));
 
 jest.mock('./MetricsActions', () => ({
-  MetricsActions: ({ onRefresh, breakdownEnabled, onBreakdownChange }: any) => (
-    <>
-      <button data-testid="refresh-btn" onClick={onRefresh}>
-        Refresh
-      </button>
-      <button
-        data-testid="breakdown-toggle"
-        data-enabled={String(breakdownEnabled)}
-        onClick={() => onBreakdownChange(!breakdownEnabled)}
-      >
-        Toggle breakdown
-      </button>
-    </>
+  MetricsActions: ({ onRefresh }: any) => (
+    <button data-testid="refresh-btn" onClick={onRefresh}>
+      Refresh
+    </button>
   ),
 }));
 
@@ -136,10 +151,22 @@ const aggregateMetrics = {
   memoryUsage: { memoryUsage: [], memoryRequests: [], memoryLimits: [] },
 };
 
+const point = [{ timestamp: '2026-03-05T10:00:00.000Z', value: 0.5 }];
+
+/** Points on every metric, so each of the six cards has a line to draw. */
+const fullResourceMetrics = {
+  cpuUsage: { cpuUsage: point, cpuRequests: point, cpuLimits: point },
+  memoryUsage: {
+    memoryUsage: point,
+    memoryRequests: point,
+    memoryLimits: point,
+  },
+};
+
 const breakdownMetrics = {
   byComponent: {
-    api: aggregateMetrics,
-    worker: aggregateMetrics,
+    api: fullResourceMetrics,
+    worker: fullResourceMetrics,
   },
   failedComponents: [],
 };
@@ -152,14 +179,18 @@ function renderPage() {
   );
 }
 
-/** Selection drives the mode, so tests set it through the URL filters. */
-function selectComponents(components: string[]) {
+/**
+ * Both live in the URL. `view` left out stands for a link written before the
+ * control existed, where the surviving selection decides the view.
+ */
+function selectComponents(components: string[], view?: 'total' | 'breakdown') {
   const updateFilters = jest.fn();
   mockUseUrlFilters.mockReturnValue({
     filters: {
       environment: defaultEnvironment,
       timeRange: '1h',
       components,
+      view,
     },
     updateFilters,
   });
@@ -359,6 +390,32 @@ describe('ObservabilityProjectMetricsPage', () => {
       expect(screen.queryByTestId('graph-cpu')).not.toBeInTheDocument();
     });
 
+    it('lays the six cards out as one flat list, CPU first, then memory', async () => {
+      await renderPage();
+
+      const cards = Array.from(document.querySelectorAll('[data-usage-type]'));
+
+      // One list in reading order, so the grid wraps c1 c2 / c3 m1 / m2 m3 at
+      // two per row, and c1 c2 c3 / m1 m2 m3 at three per row.
+      expect(
+        cards.map(card =>
+          card.getAttribute('data-testid')!.replace('project-graph-', ''),
+        ),
+      ).toEqual([
+        'cpuUsage',
+        'cpuRequests',
+        'cpuLimits',
+        'memoryUsage',
+        'memoryRequests',
+        'memoryLimits',
+      ]);
+      // No nested columns: every card's grid item shares one parent grid.
+      const grids = new Set(
+        cards.map(card => card.closest('.MuiGrid-item')?.parentElement),
+      );
+      expect(grids.size).toBe(1);
+    });
+
     it('titles the six cards by metric', async () => {
       await renderPage();
 
@@ -377,7 +434,7 @@ describe('ObservabilityProjectMetricsPage', () => {
     it('renders the surviving charts and names the failures (E9)', async () => {
       mockUseProjectMetrics.mockReturnValue({
         metrics: {
-          byComponent: { api: aggregateMetrics },
+          byComponent: { api: fullResourceMetrics },
           failedComponents: [{ name: 'worker', error: 'nope' }],
         },
         loading: false,
@@ -598,60 +655,125 @@ describe('ObservabilityProjectMetricsPage', () => {
     expect(screen.getByTestId('component-count')).toHaveTextContent('2');
   });
 
-  describe('component breakdown switch', () => {
-    it('starts off and greys out the component selector', async () => {
+  describe('view control', () => {
+    it('starts on the project total', async () => {
       await renderPage();
 
-      expect(screen.getByTestId('breakdown-toggle')).toHaveAttribute(
-        'data-enabled',
-        'false',
-      );
       expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
-        'data-components-disabled',
-        'true',
+        'data-view-mode',
+        'total',
       );
     });
 
-    it('starts on for a deep link that names components', async () => {
+    it('starts on the breakdown for a link that names components', async () => {
       selectComponents(['api']);
 
       await renderPage();
 
-      expect(screen.getByTestId('breakdown-toggle')).toHaveAttribute(
-        'data-enabled',
-        'true',
-      );
       expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
-        'data-components-disabled',
-        'false',
+        'data-view-mode',
+        'breakdown',
       );
     });
 
-    it('enables the selector without changing the URL when switched on', async () => {
+    it('selects components when the user picks the breakdown', async () => {
       const updateFilters = selectComponents([]);
 
       await renderPage();
-      await userEvent.click(screen.getByTestId('breakdown-toggle'));
+      await userEvent.click(screen.getByTestId('view-breakdown'));
 
-      expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
-        'data-components-disabled',
-        'false',
-      );
-      expect(updateFilters).not.toHaveBeenCalled();
-      // Nothing selected yet, so the aggregate stays up.
-      expect(screen.getByTestId('graph-cpu')).toBeInTheDocument();
+      // Charting nothing would be the old dead state, so the view arrives with
+      // a selection already made.
+      expect(updateFilters).toHaveBeenCalledWith({
+        view: 'breakdown',
+        components: ['api', 'worker'].slice(0, AUTO_SELECTED_COMPONENT_LIMIT),
+      });
     });
 
-    it('clears the selection when switched off', async () => {
+    it('selects no more components than the fan-out limit', async () => {
+      const all = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      mockUseGetComponentsByProject.mockReturnValue({
+        components: all.map(name => ({ name })),
+        loading: false,
+        error: null,
+      });
+      const updateFilters = selectComponents([]);
+
+      await renderPage();
+      await userEvent.click(screen.getByTestId('view-breakdown'));
+
+      // One request per selected component, so a large project must not fan
+      // out every way on one click.
+      expect(all.length).toBeGreaterThan(AUTO_SELECTED_COMPONENT_LIMIT);
+      expect(updateFilters).toHaveBeenCalledWith({
+        view: 'breakdown',
+        components: all.slice(0, AUTO_SELECTED_COMPONENT_LIMIT),
+      });
+    });
+
+    it('keeps an existing selection when the user returns to the breakdown', async () => {
+      const updateFilters = selectComponents(['worker'], 'total');
+
+      await renderPage();
+      await userEvent.click(screen.getByTestId('view-breakdown'));
+
+      expect(updateFilters).toHaveBeenCalledWith({
+        view: 'breakdown',
+        components: ['worker'],
+      });
+    });
+
+    it('clears the selection when the user picks the project total', async () => {
       const updateFilters = selectComponents(['api', 'worker']);
 
       await renderPage();
-      await userEvent.click(screen.getByTestId('breakdown-toggle'));
+      await userEvent.click(screen.getByTestId('view-total'));
 
-      expect(updateFilters).toHaveBeenCalledWith({ components: [] });
+      expect(updateFilters).toHaveBeenCalledWith({
+        view: 'total',
+        components: [],
+      });
+    });
+
+    it('pins the view when the selection changes, so it cannot drift', async () => {
+      // Clearing every checkbox inside the breakdown must not hand the user
+      // back to the total without the control saying so.
+      const updateFilters = selectComponents(['api'], 'breakdown');
+
+      await renderPage();
+      await userEvent.click(screen.getByTestId('clear-components'));
+
+      expect(updateFilters).toHaveBeenCalledWith({
+        components: [],
+        view: 'breakdown',
+      });
+    });
+
+    it('says the breakdown has nothing to chart rather than showing the total', async () => {
+      selectComponents([], 'breakdown');
+
+      await renderPage();
+
+      expect(
+        screen.getByText(/Select at least one component to compare/),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('graph-cpu')).not.toBeInTheDocument();
+      expect(enabledArgOf(mockUseProjectMetrics)).toBe(false);
+      expect(enabledArgOf(mockUseMetrics)).toBe(false);
+    });
+
+    it('hides the control for a project with no components', async () => {
+      mockUseGetComponentsByProject.mockReturnValue({
+        components: [],
+        loading: false,
+        error: null,
+      });
+
+      await renderPage();
+
       expect(screen.getByTestId('metrics-filters')).toHaveAttribute(
-        'data-components-disabled',
-        'true',
+        'data-has-view-control',
+        'false',
       );
     });
   });

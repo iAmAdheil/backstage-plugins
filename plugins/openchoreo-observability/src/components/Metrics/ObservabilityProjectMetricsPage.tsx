@@ -30,6 +30,7 @@ import { HTTPMetricsSection } from './HTTPMetricsSection';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
 import { ProjectHTTPMetricsSection } from './ProjectHTTPMetricsSection';
 import {
+  buildChartLines,
   buildProjectSeries,
   formatMetricName,
   getMetricConfigs,
@@ -45,6 +46,7 @@ import { EnvironmentsStatusNotice } from '../common';
 import {
   CpuUsageMetrics,
   MemoryUsageMetrics,
+  MetricsViewMode,
   ProjectResourceMetrics,
   ResourceMetrics,
 } from '../../types';
@@ -56,23 +58,29 @@ const hasAnyPoints = (metrics?: ResourceMetrics | null): boolean =>
   Object.values(metrics?.memoryUsage ?? {}).some(series => series?.length > 0);
 
 /**
+ * How many components the breakdown selects for the user when they switch to
+ * it. The breakdown sends one request per component, so a 30-component project
+ * must not fan out 30 ways on one click. The selector shows exactly which ones
+ * are on, and the user adds the rest.
+ */
+export const AUTO_SELECTED_COMPONENT_LIMIT = 1;
+
+/**
  * Project (System entity) Metrics tab.
  *
- * Two modes over the same filter bar:
+ * Two views over the same filter bar, chosen by the segmented control:
  *
- * - **No components selected (default).** One `getMetrics` call with the
- *   component omitted. The observer answers with a project-wide aggregate in
- *   the component page's exact schema, so it renders through the component
- *   page's own chart and HTTP section. The tab is meant to be
- *   indistinguishable from the component tab apart from the numbers.
- * - **Components selected.** A fan-out, one request per component. Usage,
+ * - **Project (default).** One `getMetrics` call with the component
+ *   omitted. The observer answers with a project-wide aggregate in the
+ *   component page's exact schema, so it renders through the component page's
+ *   own chart and HTTP section. The tab is meant to be indistinguishable from
+ *   the component tab apart from the numbers.
+ * - **By component.** A fan-out, one request per selected component. Usage,
  *   requests, and limits each get their own chart, one line per component,
  *   one colour each, so many components do not pile 3N lines on one card. The
  *   aggregate response carries no component dimension, so the breakdown can
  *   only come from separate requests.
  *
- * Both hooks are called unconditionally and gated by `enabled`, so the mode
- * switch never violates the rules of hooks and the inactive mode fires nothing.
  */
 const ObservabilityProjectMetricsContent = () => {
   const classes = useObservabilityMetricsPageStyles();
@@ -96,13 +104,6 @@ const ObservabilityProjectMetricsContent = () => {
 
   const { filters, updateFilters } = useUrlFilters({ environments });
 
-  // Off by default. A deep link that already names components opens with the
-  // breakdown on, so the URL and the switch agree on first paint. Not written
-  // to the URL: the `components` param is the only state a link needs.
-  const [breakdownEnabled, setBreakdownEnabled] = useState(
-    () => (filters.components ?? []).length > 0,
-  );
-
   // Per-environment permission (ABAC `resource.environment`) — gates the
   // content and the fetch once an env is selected. See openchoreo#3408.
   const {
@@ -124,7 +125,15 @@ const ObservabilityProjectMetricsContent = () => {
     return (filters.components ?? []).filter(name => known.has(name));
   }, [components, componentsLoading, filters.components]);
 
-  const isBreakdown = selectedComponents.length > 0;
+  // The control is the single source of truth for which charts render. A link
+  // written before the control existed carries no `view`, so the surviving
+  // selection stands in for it: `?components=api` still opens the breakdown,
+  // and a param naming only a deleted component still opens the total.
+  const viewMode: MetricsViewMode =
+    filters.view ?? (selectedComponents.length > 0 ? 'breakdown' : 'total');
+
+  const isBreakdown = viewMode === 'breakdown';
+  const hasSelection = selectedComponents.length > 0;
 
   // The project entity carries no component annotation, so `useMetrics` omits
   // the component and the observer answers with the project-wide aggregate.
@@ -143,7 +152,7 @@ const ObservabilityProjectMetricsContent = () => {
     namespace,
     projectName,
     'resource',
-    canViewMetricsForEnv && isBreakdown,
+    canViewMetricsForEnv && isBreakdown && hasSelection,
   );
 
   const metricsLoading = isBreakdown ? breakdown.loading : aggregate.loading;
@@ -172,9 +181,14 @@ const ObservabilityProjectMetricsContent = () => {
     () => buildProjectSeries<ResourceMetrics>(byComponent, m => m.memoryUsage),
     [byComponent],
   );
-  // One card per metric: CPU usage/requests/limits, then the same for memory.
-  // Order follows the component chart's line order so both tabs read alike.
-  const breakdownCharts = useMemo(
+
+  // One card per metric, CPU first, then memory, each in its config's order.
+  // The cards form one flat list so the grid wraps them in reading order at
+  // every breakpoint: c1 c2 / c3 m1 / m2 m3 at two per row.
+  //
+  // The cut happens here, once: a card carries the lines it draws and nothing
+  // wider, so no chart has to sift a whole-resource map on every render.
+  const breakdownCards = useMemo(
     () =>
       (
         [
@@ -184,8 +198,8 @@ const ObservabilityProjectMetricsContent = () => {
       ).flatMap(([usageType, series]) =>
         Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
           usageType,
-          metricKey: key,
-          series,
+          title: formatMetricName(key),
+          lines: buildChartLines(series, key),
         })),
       ),
     [cpuSeries, memorySeries],
@@ -204,7 +218,14 @@ const ObservabilityProjectMetricsContent = () => {
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const handleFiltersChange = (newFilters: Partial<typeof filters>) => {
-    updateFilters(newFilters);
+    // Pin the current view whenever the selection changes. Without it, clearing
+    // every component inside the breakdown would fall back to the derived
+    // default and silently return the user to the total.
+    updateFilters(
+      newFilters.components !== undefined
+        ? { ...newFilters, view: viewMode }
+        : newFilters,
+    );
   };
 
   const handleRefresh = () => {
@@ -212,13 +233,25 @@ const ObservabilityProjectMetricsContent = () => {
     setRefreshNonce(prev => prev + 1);
   };
 
-  // Switching off returns to the aggregate: the selection is cleared rather
-  // than kept hidden, so the charts and the URL match the switch.
-  const handleBreakdownChange = (enabled: boolean) => {
-    setBreakdownEnabled(enabled);
-    if (!enabled) {
-      updateFilters({ components: [] });
+  // The control changes the charts on click. Entering the breakdown with no
+  // selection would show nothing, so it selects components up to the fan-out
+  // limit; leaving it clears the selection, so the URL matches the charts.
+  const handleViewModeChange = (next: MetricsViewMode) => {
+    if (next === viewMode) return;
+
+    if (next === 'total') {
+      updateFilters({ view: 'total', components: [] });
+      return;
     }
+
+    updateFilters({
+      view: 'breakdown',
+      components: hasSelection
+        ? selectedComponents
+        : components
+            .slice(0, AUTO_SELECTED_COMPONENT_LIMIT)
+            .map(component => component.name),
+    });
   };
 
   const renderError = (error: string) => {
@@ -285,7 +318,14 @@ const ObservabilityProjectMetricsContent = () => {
         environmentsLoading={environmentsLoading}
         components={components}
         componentsLoading={componentsLoading}
-        componentsDisabled={!breakdownEnabled}
+        viewMode={viewMode}
+        // A project with no components has nothing to break down, so it keeps
+        // the aggregate and never sees the control.
+        onViewModeChange={
+          components.length > 0 || componentsLoading
+            ? handleViewModeChange
+            : undefined
+        }
         disabled={metricsLoading}
       />
 
@@ -322,25 +362,31 @@ const ObservabilityProjectMetricsContent = () => {
         </Alert>
       )}
 
-      {canViewMetricsForEnv && (
+      {/* The breakdown with nothing selected has no charts to draw. Say that,
+          rather than showing the aggregate under a control that reads
+          "By component". */}
+      {canViewMetricsForEnv && isBreakdown && !hasSelection && (
+        <Alert severity="info" className={classes.errorContainer}>
+          <Typography variant="body1">
+            Select at least one component to compare, or switch back to the
+            Project view.
+          </Typography>
+        </Alert>
+      )}
+
+      {canViewMetricsForEnv && (!isBreakdown || hasSelection) && (
         <>
-          <MetricsActions
-            onRefresh={handleRefresh}
-            disabled={metricsLoading}
-            breakdownEnabled={breakdownEnabled}
-            onBreakdownChange={handleBreakdownChange}
-          />
+          <MetricsActions onRefresh={handleRefresh} disabled={metricsLoading} />
           <Grid container spacing={4} className={classes.metricsGridContainer}>
             {isBreakdown ? (
-              breakdownCharts.map(({ usageType, metricKey, series }) => (
-                <Grid item xs={12} md={4} key={metricKey}>
+              breakdownCards.map(({ usageType, title, lines }) => (
+                <Grid item xs={12} md={6} xl={4} key={title}>
                   <Card>
-                    <CardHeader title={formatMetricName(metricKey)} />
+                    <CardHeader title={title} />
                     <Divider />
                     <CardContent>
                       <ProjectMetricGraph
-                        seriesByComponent={series}
-                        metricKey={metricKey}
+                        lines={lines}
                         colorOf={colorOf}
                         usageType={usageType}
                         timeRange={filters.timeRange}
