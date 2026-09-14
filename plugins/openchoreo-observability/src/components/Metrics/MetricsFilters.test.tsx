@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MetricsFilters } from './MetricsFilters';
 import { Filters } from '../../types';
 import { Environment } from '@openchoreo/backstage-plugin-react';
@@ -90,23 +91,24 @@ describe('component selector', () => {
     expect(screen.getAllByText('Components').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('stays visible but greyed out when componentsDisabled is set', () => {
-    renderFilters({ components, componentsDisabled: true });
+  it('is hidden in the total view, where it would do nothing', () => {
+    renderFilters({
+      components,
+      viewMode: 'total',
+      onViewModeChange: jest.fn(),
+    });
 
-    expect(screen.getAllByText('Components').length).toBeGreaterThanOrEqual(1);
-    const select = document
-      .querySelector('#metrics-components-label')
-      ?.closest('.MuiFormControl-root');
-    expect(select?.querySelector('.Mui-disabled')).not.toBeNull();
+    expect(screen.queryByText('Components')).not.toBeInTheDocument();
   });
 
-  it('leaves the other filters usable when only the selector is disabled', () => {
-    renderFilters({ components, componentsDisabled: true });
+  it('appears in the breakdown view, which is what it narrows', () => {
+    renderFilters({
+      components,
+      viewMode: 'breakdown',
+      onViewModeChange: jest.fn(),
+    });
 
-    const disabledSelects = document.querySelectorAll(
-      '.MuiInputBase-root.Mui-disabled',
-    );
-    expect(disabledSelects).toHaveLength(1);
+    expect(screen.getAllByText('Components').length).toBeGreaterThanOrEqual(1);
   });
 
   // Matches RuntimeLogs/LogsFilter: no `displayEmpty`, so MUI skips
@@ -134,5 +136,58 @@ describe('component selector', () => {
     });
 
     expect(screen.getByText('API, db')).toBeInTheDocument();
+  });
+});
+
+describe('view control', () => {
+  const components = [
+    { uid: '1', name: 'api', displayName: 'API' },
+    { uid: '2', name: 'worker', displayName: 'Worker' },
+  ] as any;
+
+  it('is absent on the component page, which passes no handler', () => {
+    renderFilters();
+
+    expect(
+      screen.queryByRole('button', { name: 'By component' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers the two views and marks the active one', () => {
+    renderFilters({
+      components,
+      viewMode: 'breakdown',
+      onViewModeChange: jest.fn(),
+    });
+
+    expect(screen.getByRole('button', { name: 'Project' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(
+      screen.getByRole('button', { name: 'By component' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('reports the view the user picked', async () => {
+    const user = userEvent.setup();
+    const onViewModeChange = jest.fn();
+    renderFilters({ components, viewMode: 'total', onViewModeChange });
+
+    await user.click(screen.getByRole('button', { name: 'By component' }));
+
+    expect(onViewModeChange).toHaveBeenCalledWith('breakdown');
+  });
+
+  // Re-clicking the active button would otherwise deselect it and leave the
+  // group with no view at all.
+  it('ignores a click on the view already showing', async () => {
+    const user = userEvent.setup();
+    const onViewModeChange = jest.fn();
+    renderFilters({ components, viewMode: 'total', onViewModeChange });
+
+    await user.click(screen.getByRole('button', { name: 'Project' }));
+
+    expect(onViewModeChange).not.toHaveBeenCalled();
   });
 });

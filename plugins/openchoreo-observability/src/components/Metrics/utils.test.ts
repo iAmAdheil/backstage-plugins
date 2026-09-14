@@ -9,6 +9,7 @@ import {
   calculateTimeDomain,
   calculateMemoryYAxis,
   calculateStep,
+  buildChartLines,
   buildProjectSeries,
 } from './utils';
 import { MemoryUsageMetrics } from '../../types';
@@ -562,5 +563,64 @@ describe('buildProjectSeries', () => {
     expect(Object.keys(result)).toEqual(['a::b']);
     const group = result['a::b'];
     expect('cpuUsage' in group && group.cpuUsage).toEqual(points);
+  });
+});
+
+describe('buildChartLines', () => {
+  const point = [{ timestamp: '2026-03-05T10:00:00.000Z', value: 1 }];
+  const empty: { timestamp: string; value: number }[] = [];
+
+  const cpu = (usage: any, requests: any, limits: any) => ({
+    cpuUsage: usage,
+    cpuRequests: requests,
+    cpuLimits: limits,
+  });
+
+  it('emits one line per component for the metric', () => {
+    const lines = buildChartLines(
+      {
+        worker: cpu(point, point, point),
+        api: cpu(point, point, point),
+      } as any,
+      'cpuUsage',
+    );
+
+    // Sorted by component, so colour and legend order hold between renders.
+    expect(lines.map(line => line.component)).toEqual(['api', 'worker']);
+    expect(lines.every(line => line.metricKey === 'cpuUsage')).toBe(true);
+  });
+
+  it('plots only the metric asked for', () => {
+    const lines = buildChartLines(
+      { api: cpu(point, empty, empty) } as any,
+      'cpuRequests',
+    );
+
+    expect(lines).toEqual([]);
+  });
+
+  it('drops a component with nothing to plot', () => {
+    const lines = buildChartLines(
+      {
+        api: cpu(point, point, point),
+        silent: cpu(empty, empty, empty),
+      } as any,
+      'cpuUsage',
+    );
+
+    expect(lines.map(line => line.component)).toEqual(['api']);
+  });
+
+  it('drops a component that does not carry the metric', () => {
+    const lines = buildChartLines(
+      { api: cpu(point, point, point) } as any,
+      'memoryUsage',
+    );
+
+    expect(lines).toEqual([]);
+  });
+
+  it('returns nothing for an empty map', () => {
+    expect(buildChartLines({}, 'cpuUsage')).toEqual([]);
   });
 });

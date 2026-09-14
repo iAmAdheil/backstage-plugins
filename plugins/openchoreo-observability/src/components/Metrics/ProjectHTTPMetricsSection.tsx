@@ -13,7 +13,12 @@ import { Alert } from '@material-ui/lab';
 import { ProjectMetricGraph } from './ProjectMetricGraph';
 import { Filters, HttpMetrics, ProjectHttpMetrics } from '../../types';
 import { useDataPlaneNetPolProvider, useProjectMetrics } from '../../hooks';
-import { buildProjectSeries } from './utils';
+import {
+  buildChartLines,
+  buildProjectSeries,
+  formatMetricName,
+  getMetricConfigs,
+} from './utils';
 import { componentColorResolver } from './colors';
 
 type ProjectHTTPMetricsSectionProps = {
@@ -31,9 +36,9 @@ type ProjectHTTPMetricsSectionProps = {
  * come from the data plane's network policy provider, which is per-environment,
  * not per-component — but fanned out across the selected components.
  *
- * Card set and titles match `HTTPMetricsSection` so the project tab reads as the
- * same view; only the lines differ (one per component instead of one per
- * metric).
+ * One card per metric, one line per component, laid out in the same grid as
+ * the page's resource cards. A card per metric keeps many components readable,
+ * where one card per group would stack several lines per component.
  */
 export const ProjectHTTPMetricsSection = ({
   filters,
@@ -89,6 +94,25 @@ export const ProjectHTTPMetricsSection = ({
   const latencySeries = useMemo(
     () => buildProjectSeries<HttpMetrics>(byComponent, m => m.networkLatency),
     [byComponent],
+  );
+
+  // One card per metric, throughput first, then latency, the same as the
+  // resource cards: one line per component on each.
+  const cards = useMemo(
+    () =>
+      (
+        [
+          ['networkThroughput', throughputSeries],
+          ['networkLatency', latencySeries],
+        ] as const
+      ).flatMap(([usageType, series]) =>
+        Object.values(getMetricConfigs(usageType)).map(({ key }) => ({
+          usageType,
+          title: formatMetricName(key),
+          lines: buildChartLines(series, key),
+        })),
+      ),
+    [throughputSeries, latencySeries],
   );
   const theme = useTheme();
   const dark = theme.palette.type === 'dark';
@@ -153,38 +177,24 @@ export const ProjectHTTPMetricsSection = ({
           </Alert>
         </Grid>
       )}
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardHeader title="Network Throughput" />
-          <Divider />
-          <CardContent>
-            <ProjectMetricGraph
-              seriesByComponent={throughputSeries}
-              colorOf={colorOf}
-              usageType="networkThroughput"
-              timeRange={filters.timeRange}
-              customStartTime={filters.customStartTime}
-              customEndTime={filters.customEndTime}
-            />
-          </CardContent>
-        </Card>
-      </Grid>
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardHeader title="Network Latency" />
-          <Divider />
-          <CardContent>
-            <ProjectMetricGraph
-              seriesByComponent={latencySeries}
-              colorOf={colorOf}
-              usageType="networkLatency"
-              timeRange={filters.timeRange}
-              customStartTime={filters.customStartTime}
-              customEndTime={filters.customEndTime}
-            />
-          </CardContent>
-        </Card>
-      </Grid>
+      {cards.map(({ usageType, title, lines }) => (
+        <Grid item xs={12} md={6} xl={4} key={title}>
+          <Card>
+            <CardHeader title={title} />
+            <Divider />
+            <CardContent>
+              <ProjectMetricGraph
+                lines={lines}
+                colorOf={colorOf}
+                usageType={usageType}
+                timeRange={filters.timeRange}
+                customStartTime={filters.customStartTime}
+                customEndTime={filters.customEndTime}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
     </>
   );
 };
