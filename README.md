@@ -481,7 +481,7 @@ eventForwarder:
 
 **Production (Helm):**
 
-The Helm chart injects this environment variable. You can configure it via Helm values:
+The Helm chart injects the wirelogs environment variable. You can configure it via Helm values:
 
 ```yaml
 backstage:

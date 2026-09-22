@@ -172,6 +172,19 @@ export {
   type VirtualizedLogListProps,
 } from './components/VirtualizedLogList';
 export { makeColumnStyle } from './components/VirtualizedLogList/columnStyle';
+export {
+  TokenFilterBar,
+  buildPathAliases,
+  parseFilterDraft,
+  resolvePath,
+  type TokenFilterBarProps,
+  type FilterFieldDef,
+  type FilterToken,
+  type FilterValueOption,
+  type FilterValuesProvider,
+  type FilterValuesRequest,
+  type FilterValuesState,
+} from './components/TokenFilterBar';
 
 // Hooks
 export {
@@ -205,6 +218,7 @@ export {
   useAuthzEnabled,
   useSecretManagementEnabled,
   useAssistantEnabled,
+  useDeliveryInsightsEnabled,
 } from './hooks/useOpenChoreoFeatures';
 export {
   useComponentEntityDetails,
@@ -342,6 +356,10 @@ export {
   useEventsPermission,
   type UseEventsPermissionResult,
 } from './hooks/useEventsPermission';
+export {
+  useAuditLogsPermission,
+  type UseAuditLogsPermissionResult,
+} from './hooks/useAuditLogsPermission';
 export {
   useMetricsPermission,
   type UseMetricsPermissionResult,
@@ -711,3 +729,15 @@ export {
   type UseProjectEnvironmentsResult,
   type ProjectEnvironmentsStatus,
 } from './hooks/useProjectEnvironments';
+
+// Assistant integration contract — the optional slots an AI assistant can
+// fill across the portal shell and plugins. Contract only; implementations
+// are registered by host apps.
+export {
+  portalAssistantIntegrationApiRef,
+  usePortalAssistant,
+  BuildFailureNotifierSlot,
+  type PortalAssistantIntegration,
+  type InvestigateScope,
+  type RenderInvestigateAction,
+} from './api/assistantIntegration';

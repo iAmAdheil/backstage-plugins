@@ -1,4 +1,6 @@
+import AssignmentIcon from '@material-ui/icons/Assignment';
 import MonetizationOnIcon from '@material-ui/icons/MonetizationOn';
+import SpeedIcon from '@material-ui/icons/Speed';
 import {
   ApiBlueprint,
   createExtensionInput,
@@ -22,7 +24,12 @@ import {
   isOpenChoreoManagedOfKind,
 } from '@openchoreo/backstage-plugin-common';
 
-import { platformLogsRouteRef, rootRouteRef } from './routes';
+import {
+  auditLogsRouteRef,
+  deliveryInsightsRouteRef,
+  platformLogsRouteRef,
+  rootRouteRef,
+} from './routes';
 import {
   observabilityApiRef,
   ObservabilityClient,
@@ -132,7 +139,7 @@ const runtimeLogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/runtime-logs',
     title: 'Logs',
-    group: 'runtime',
+    group: 'logs',
     filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/RuntimeLogs/ObservabilityRuntimeLogsPage').then(
@@ -150,7 +157,7 @@ const runtimeEventsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/runtime-events',
     title: 'Events',
-    group: 'runtime',
+    group: 'events',
     filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/RuntimeEvents/ObservabilityRuntimeEventsPage').then(
@@ -168,7 +175,7 @@ const metricsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/metrics',
     title: 'Metrics',
-    group: 'runtime',
+    group: 'metrics',
     filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Metrics/ObservabilityMetricsPage').then(m => (
@@ -184,7 +191,7 @@ const alertsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/alerts',
     title: 'Alerts',
-    group: 'runtime',
+    group: 'alerts',
     filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Alerts/ObservabilityAlertsPage').then(m => (
@@ -200,7 +207,7 @@ const wirelogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/wirelogs',
     title: 'Wirelogs',
-    group: 'runtime',
+    group: 'wirelogs',
     filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Wirelogs/ObservabilityWirelogsPage').then(m => (
@@ -222,7 +229,7 @@ const projectRuntimeLogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/logs',
     title: 'Logs',
-    group: 'runtime',
+    group: 'logs',
     filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import(
@@ -256,7 +263,7 @@ const tracesEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/traces',
     title: 'Traces',
-    group: 'analysis',
+    group: 'traces',
     filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/Traces/ObservabilityTracesPage').then(m => (
@@ -272,7 +279,7 @@ const projectIncidentsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/incidents',
     title: 'Incidents',
-    group: 'analysis',
+    group: 'incidents',
     filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/Incidents/ObservabilityProjectIncidentsPage').then(
@@ -290,7 +297,7 @@ const rcaReportsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/rca-reports',
     title: 'RCA Reports',
-    group: 'analysis',
+    group: 'rca-reports',
     filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/RCA/RCAPage').then(m => (
@@ -306,7 +313,7 @@ const projectCostAnalysisEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/cost-analysis',
     title: 'Cost Analysis',
-    group: 'analysis',
+    group: 'cost-analysis',
     filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/CostAnalysis/CostAnalysisPage').then(m => (
@@ -342,6 +349,29 @@ const costInsightsSummaryCard = EntityCardBlueprint.make({
   },
 });
 
+/**
+ * The audit trail, as a top-level page: it spans every namespace and is gated
+ * at cluster scope, so there is no entity to hang it off. Ships title + icon so
+ * adopters auto-get a sidebar entry via DefaultNavContent.
+ */
+const auditLogsPage = PageBlueprint.make({
+  name: 'audit-logs',
+  params: {
+    path: '/audit-logs',
+    routeRef: auditLogsRouteRef,
+    title: 'Audit Logs',
+    icon: <AssignmentIcon />,
+    // Page renders its own <Page><Header>; suppress outer PageLayout header.
+    noHeader: true,
+    loader: () =>
+      import('./components/AuditLogs/AuditLogsPage').then(m => (
+        <FeatureGatedContent feature="observability">
+          <m.AuditLogsPage />
+        </FeatureGatedContent>
+      )),
+  },
+});
+
 // Ships title + icon so adopters auto-get a sidebar entry via DefaultNavContent.
 const costInsightsPage = PageBlueprint.make({
   name: 'cost-insights',
@@ -355,6 +385,33 @@ const costInsightsPage = PageBlueprint.make({
     loader: () =>
       import('./components/CostInsights/CostInsightsPage').then(m => (
         <m.CostInsightsPage />
+      )),
+  },
+});
+
+// Ships title + icon so adopters auto-get a sidebar entry via DefaultNavContent,
+// the same as cost insights above. The portal app curates its own sidebar and
+// takes this by id -- see PortalNavContent.
+//
+// The route stays in-tree whatever the flag says, so routing stays valid and a
+// link to it never breaks; the page itself renders the disabled empty state when
+// the feature is off, the same way the observability-gated tabs above do. A
+// preview that only hid its menu entry would still serve the page to anyone
+// holding the URL.
+const deliveryInsightsPage = PageBlueprint.make({
+  name: 'delivery-insights',
+  params: {
+    path: '/delivery-insights',
+    routeRef: deliveryInsightsRouteRef,
+    title: 'Delivery Insights',
+    icon: <SpeedIcon />,
+    // Page renders its own <Page><Header>; suppress outer PageLayout header.
+    noHeader: true,
+    loader: () =>
+      import('./components/DeliveryInsights/DeliveryInsightsPage').then(m => (
+        <FeatureGatedContent feature="deliveryInsights">
+          <m.DeliveryInsightsPage />
+        </FeatureGatedContent>
       )),
   },
 });
@@ -390,7 +447,7 @@ const platformLogsTab = SubPageBlueprint.make({
 
 export default createFrontendPlugin({
   pluginId: 'openchoreo-observability',
-  routes: { root: rootRouteRef },
+  routes: { root: rootRouteRef, auditLogs: auditLogsRouteRef },
   extensions: [
     observabilityApi,
     queryProvider,
@@ -398,7 +455,9 @@ export default createFrontendPlugin({
     finopsAgentApi,
     logRowActionRendererApi,
     costInsightsPage,
+    deliveryInsightsPage,
     platformLogsTab,
+    auditLogsPage,
     runtimeLogsEntityContent,
     runtimeEventsEntityContent,
     metricsEntityContent,

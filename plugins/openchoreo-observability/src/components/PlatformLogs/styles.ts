@@ -97,6 +97,14 @@ export const useFacetSelectStyles = makeStyles(theme => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // Pushed to the far edge so the counts line up as a column rather than trailing each
+  // value at a different offset.
+  optionCount: {
+    marginLeft: 'auto',
+    paddingLeft: theme.spacing(1),
+    color: theme.palette.text.secondary,
+    fontVariantNumeric: 'tabular-nums',
+  },
 }));
 
 export const usePlatformLogsFilterRowStyles = makeStyles(theme => ({
@@ -124,5 +132,36 @@ export const usePlatformLogsResultStyles = makeStyles(theme => ({
   },
   columns: {
     minWidth: 150,
+  },
+}));
+
+export const usePlatformLogEntryRowStyles = makeStyles(theme => ({
+  // A filterable value in the expanded row. Sized to match the plain metadata values
+  // around it, so the panel reads the same with or without the buttons.
+  drill: {
+    font: 'inherit',
+    fontFamily: 'monospace',
+    fontSize: '11px',
+    padding: '0 4px',
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 4,
+    background: 'none',
+    color: theme.palette.text.secondary,
+    cursor: 'pointer',
+    textAlign: 'left',
+    wordBreak: 'break-all',
+    '&:hover:not(:disabled)': {
+      borderColor: theme.palette.primary.main,
+      color: theme.palette.text.primary,
+    },
+    '&:focus-visible': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: 1,
+    },
+    // Already applied: still legible, but plainly not something to click again.
+    '&:disabled': {
+      cursor: 'default',
+      borderStyle: 'dashed',
+    },
   },
 }));

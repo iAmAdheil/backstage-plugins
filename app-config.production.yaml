@@ -25,6 +25,22 @@ app:
   # Suppress upstream cards that duplicate OC layouts + default themes so
   # our openchoreo-* themes win the theme picker.
   extensions:
+    # Tab order of the Platform section. Extensions named here are ordered
+    # ahead of the rest, in this order, so Overview stays the first tab —
+    # which is also where `/platform-overview` redirects to. Without this
+    # the order would depend on the `features` array order in
+    # `createPortalApp`.
+    - sub-page:platform-engineer-core/overview
+    - sub-page:openchoreo-observability/platform-logs
+    # Serve the composable home page at `/` and trim built-in home widgets.
+    - page:home:
+        config:
+          path: /
+    - home-page-widget:home/toolkit: false
+    - home-page-widget:home/random-joke: false
+    - home-page-widget:home/most-visited: false
+    - home-page-widget:home/recently-visited: false
+    - home-page-widget:home/world-clock: false
     - theme:app/light: false
     - theme:app/dark: false
     # `page:kubernetes` needs an entity context (throws standalone); we
@@ -298,6 +314,13 @@ openchoreo:
     # LLM API key Secret to be deployed.
     assistant:
       enabled: ${OPENCHOREO_FEATURES_ASSISTANT_ENABLED}
+    # Delivery Insights (DORA metrics) page
+    # Opt-in: defaults to false. Feature preview, and separate from the Observer
+    # flag that collects the data (observer.deliveryInsights.enabled on the
+    # observability plane) -- both are needed for the page to show anything.
+    # When disabled, hides the Delivery Insights sidebar item.
+    deliveryInsights:
+      enabled: ${OPENCHOREO_FEATURES_DELIVERY_INSIGHTS_ENABLED}
     # Secret Management configuration
     # When disabled, hides the Secrets settings tab and disables secret APIs
     secretManagement:

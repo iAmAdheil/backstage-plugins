@@ -25,6 +25,7 @@ const ALPHA_EXTENSION_NAMES = [
   ['entity-card', 'project-contents'],
   ['entity-card', 'deployment-pipeline'],
   // domain-page
+  ['entity-content', 'namespace-cell-diagram'],
   ['entity-card', 'namespace-projects'],
   ['entity-card', 'namespace-resources'],
   // managed resource
@@ -63,6 +64,8 @@ const ALPHA_EXTENSION_NAMES = [
   ['entity-card', 'workflow-overview'],
   ['entity-card', 'component-workflow-overview'],
   // scaffolder form fields
+  // Injects the signed-in user's OpenChoreo IDP token as a template secret.
+  ['scaffolder-form-decorator', 'openchoreo-user-token'],
   ['scaffolder-form-field', 'advanced-configuration-field'],
   ['scaffolder-form-field', 'build-and-deploy-field'],
   ['scaffolder-form-field', 'build-template-parameters'],
